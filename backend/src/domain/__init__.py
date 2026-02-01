@@ -1,0 +1,22 @@
+"""Domain layer for Orchestra Planner.
+
+This package contains pure business logic with zero external dependencies.
+
+Structure:
+- entities/: Core domain entities (User, Task, Project, etc.)
+- errors/: Domain-specific exceptions (AuthError, TaskError, etc.)
+- ports/: Interface definitions for external systems (repositories, services)
+- rules/: Business rule constants (BR-TASK-*, BR-AUTH-*, etc.)
+"""
+
+from backend.src.domain.business_rules import (
+    BusinessRule,
+    BusinessRuleViolation,
+    RuleCategory,
+)
+
+__all__ = [
+    "BusinessRule",
+    "BusinessRuleViolation",
+    "RuleCategory",
+]
