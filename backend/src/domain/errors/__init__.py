@@ -13,6 +13,21 @@ from backend.src.domain.errors.auth import (
     UserNotFoundError,
 )
 from backend.src.domain.errors.base import DomainError
+from backend.src.domain.errors.llm import (
+    LLMAPIKeyDecryptionError,
+    LLMError,
+    LLMInvalidResponseError,
+    LLMNotConfiguredError,
+    LLMProviderError,
+    LLMRateLimitError,
+)
+from backend.src.domain.errors.notification import (
+    EmailDeliveryError,
+    InvalidRecipientError,
+    NotificationDeliveryError,
+    NotificationError,
+    NotificationTemplateError,
+)
 from backend.src.domain.errors.project import (
     ManagerRequiredError,
     ProjectAccessDeniedError,
@@ -45,4 +60,15 @@ __all__ = [
     "ProjectNotFoundError",
     "ProjectAccessDeniedError",
     "ManagerRequiredError",
+    "LLMError",
+    "LLMNotConfiguredError",
+    "LLMProviderError",
+    "LLMRateLimitError",
+    "LLMInvalidResponseError",
+    "LLMAPIKeyDecryptionError",
+    "NotificationError",
+    "NotificationDeliveryError",
+    "EmailDeliveryError",
+    "InvalidRecipientError",
+    "NotificationTemplateError",
 ]
