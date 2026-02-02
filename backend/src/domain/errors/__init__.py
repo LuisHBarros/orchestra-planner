@@ -13,6 +13,13 @@ from backend.src.domain.errors.auth import (
     UserNotFoundError,
 )
 from backend.src.domain.errors.base import DomainError
+from backend.src.domain.errors.invite import (
+    InviteAlreadyAcceptedError,
+    InviteError,
+    InviteExpiredError,
+    InviteNotFoundError,
+    UserAlreadyMemberError,
+)
 from backend.src.domain.errors.llm import (
     LLMAPIKeyDecryptionError,
     LLMError,
@@ -35,8 +42,12 @@ from backend.src.domain.errors.project import (
     ProjectNotFoundError,
 )
 from backend.src.domain.errors.task import (
+    CircularDependencyError,
     InvalidStatusTransitionError,
     TaskError,
+    TaskNotAssignedError,
+    TaskNotFoundError,
+    TaskNotOwnedError,
     TaskNotSelectableError,
 )
 from backend.src.domain.errors.workload import (
@@ -45,27 +56,44 @@ from backend.src.domain.errors.workload import (
 )
 
 __all__ = [
+    # Base
     "DomainError",
+    # Auth
     "AuthError",
     "InvalidTokenError",
     "InvalidTokenPayloadError",
     "MagicLinkExpiredError",
     "UserNotFoundError",
+    # Task
     "TaskError",
+    "TaskNotFoundError",
     "InvalidStatusTransitionError",
     "TaskNotSelectableError",
+    "TaskNotAssignedError",
+    "TaskNotOwnedError",
+    "CircularDependencyError",
+    # Workload
     "WorkloadError",
     "WorkloadExceededError",
+    # Project
     "ProjectError",
     "ProjectNotFoundError",
     "ProjectAccessDeniedError",
     "ManagerRequiredError",
+    # Invite
+    "InviteError",
+    "InviteNotFoundError",
+    "InviteExpiredError",
+    "InviteAlreadyAcceptedError",
+    "UserAlreadyMemberError",
+    # LLM
     "LLMError",
     "LLMNotConfiguredError",
     "LLMProviderError",
     "LLMRateLimitError",
     "LLMInvalidResponseError",
     "LLMAPIKeyDecryptionError",
+    # Notification
     "NotificationError",
     "NotificationDeliveryError",
     "EmailDeliveryError",

@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from backend.src.application.project_management import (
+from backend.src.application.use_cases.project_management import (
     GetProjectDetailsInput,
     GetProjectDetailsUseCase,
 )
