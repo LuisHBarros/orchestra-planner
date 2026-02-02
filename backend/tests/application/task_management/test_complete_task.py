@@ -10,10 +10,11 @@ from backend.src.application.use_cases.task_management import (
     CompleteTaskUseCase,
 )
 from backend.src.domain.entities import (
-    Project,
     ProjectMember,
     SeniorityLevel,
     Task,
+    TaskLog,
+    TaskLogType,
     TaskStatus,
 )
 from backend.src.domain.errors import TaskNotFoundError, TaskNotOwnedError
@@ -30,10 +31,16 @@ def task_repository():
 
 
 @pytest.fixture
-def use_case(project_member_repository, task_repository):
+def task_log_repository():
+    return AsyncMock()
+
+
+@pytest.fixture
+def use_case(project_member_repository, task_repository, task_log_repository):
     return CompleteTaskUseCase(
         project_member_repository=project_member_repository,
         task_repository=task_repository,
+        task_log_repository=task_log_repository,
     )
 
 
@@ -82,6 +89,7 @@ class TestCompleteTaskUseCase:
         use_case,
         project_member_repository,
         task_repository,
+        task_log_repository,
         project_member,
         doing_task,
         member_user_id,
@@ -90,6 +98,7 @@ class TestCompleteTaskUseCase:
         task_repository.find_by_id.return_value = doing_task
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
 
         input_data = CompleteTaskInput(
             task_id=doing_task.id,
@@ -104,8 +113,41 @@ class TestCompleteTaskUseCase:
         task_repository.save.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_creates_status_change_log(
+        self,
+        use_case,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        project_member,
+        doing_task,
+        member_user_id,
+    ):
+        """BR-ASSIGN-005: All status changes are logged in history."""
+        task_repository.find_by_id.return_value = doing_task
+        project_member_repository.find_by_project_and_user.return_value = project_member
+        task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
+
+        input_data = CompleteTaskInput(
+            task_id=doing_task.id,
+            user_id=member_user_id,
+        )
+
+        await use_case.execute(input_data)
+
+        task_log_repository.save.assert_called_once()
+        saved_log = task_log_repository.save.call_args[0][0]
+        assert isinstance(saved_log, TaskLog)
+        assert saved_log.log_type == TaskLogType.STATUS_CHANGE
+        assert saved_log.task_id == doing_task.id
+        assert saved_log.author_id == project_member.id
+        assert "Doing" in saved_log.content
+        assert "Done" in saved_log.content
+
+    @pytest.mark.asyncio
     async def test_raises_task_not_found(
-        self, use_case, project_member_repository, task_repository
+        self, use_case, project_member_repository, task_repository, task_log_repository
     ):
         """Should raise TaskNotFoundError when task doesn't exist."""
         task_repository.find_by_id.return_value = None
@@ -120,7 +162,12 @@ class TestCompleteTaskUseCase:
 
     @pytest.mark.asyncio
     async def test_raises_task_not_owned_when_not_assigned(
-        self, use_case, project_member_repository, task_repository, project_id
+        self,
+        use_case,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        project_id,
     ):
         """Should raise TaskNotOwnedError when task has no assignee."""
         unassigned_task = Task(
@@ -144,6 +191,7 @@ class TestCompleteTaskUseCase:
         use_case,
         project_member_repository,
         task_repository,
+        task_log_repository,
         doing_task,
     ):
         """Should raise TaskNotOwnedError when user doesn't own the task."""
@@ -173,6 +221,7 @@ class TestCompleteTaskUseCase:
         use_case,
         project_member_repository,
         task_repository,
+        task_log_repository,
         project_id,
         project_member,
         member_user_id,
@@ -205,6 +254,7 @@ class TestCompleteTaskUseCase:
         use_case,
         project_member_repository,
         task_repository,
+        task_log_repository,
         project_member,
         doing_task,
         member_user_id,
@@ -213,6 +263,7 @@ class TestCompleteTaskUseCase:
         task_repository.find_by_id.return_value = doing_task
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
 
         input_data = CompleteTaskInput(
             task_id=doing_task.id,

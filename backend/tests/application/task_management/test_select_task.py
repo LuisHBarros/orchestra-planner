@@ -14,6 +14,8 @@ from backend.src.domain.entities import (
     ProjectMember,
     SeniorityLevel,
     Task,
+    TaskLog,
+    TaskLogType,
     TaskStatus,
 )
 from backend.src.domain.errors import (
@@ -41,11 +43,19 @@ def task_repository():
 
 
 @pytest.fixture
-def use_case(project_repository, project_member_repository, task_repository):
+def task_log_repository():
+    return AsyncMock()
+
+
+@pytest.fixture
+def use_case(
+    project_repository, project_member_repository, task_repository, task_log_repository
+):
     return SelectTaskUseCase(
         project_repository=project_repository,
         project_member_repository=project_member_repository,
         task_repository=task_repository,
+        task_log_repository=task_log_repository,
     )
 
 
@@ -99,6 +109,7 @@ class TestSelectTaskUseCase:
         project_repository,
         project_member_repository,
         task_repository,
+        task_log_repository,
         existing_project,
         project_member,
         todo_task,
@@ -110,6 +121,7 @@ class TestSelectTaskUseCase:
         task_repository.find_by_id.return_value = todo_task
         task_repository.find_by_assignee.return_value = []
         task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -124,8 +136,49 @@ class TestSelectTaskUseCase:
         task_repository.save.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_creates_assignment_log(
+        self,
+        use_case,
+        project_repository,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        existing_project,
+        project_member,
+        todo_task,
+        member_user_id,
+    ):
+        """BR-ASSIGN-005: All assignments are logged in history."""
+        project_repository.find_by_id.return_value = existing_project
+        project_member_repository.find_by_project_and_user.return_value = project_member
+        task_repository.find_by_id.return_value = todo_task
+        task_repository.find_by_assignee.return_value = []
+        task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
+
+        input_data = SelectTaskInput(
+            project_id=existing_project.id,
+            task_id=todo_task.id,
+            user_id=member_user_id,
+        )
+
+        await use_case.execute(input_data)
+
+        task_log_repository.save.assert_called_once()
+        saved_log = task_log_repository.save.call_args[0][0]
+        assert isinstance(saved_log, TaskLog)
+        assert saved_log.log_type == TaskLogType.ASSIGN
+        assert saved_log.task_id == todo_task.id
+        assert saved_log.author_id == project_member.id
+
+    @pytest.mark.asyncio
     async def test_raises_project_not_found(
-        self, use_case, project_repository, project_member_repository, task_repository
+        self,
+        use_case,
+        project_repository,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
     ):
         """Should raise ProjectNotFoundError when project doesn't exist."""
         project_repository.find_by_id.return_value = None
@@ -146,6 +199,7 @@ class TestSelectTaskUseCase:
         project_repository,
         project_member_repository,
         task_repository,
+        task_log_repository,
         existing_project,
     ):
         """Should raise ProjectAccessDeniedError when user is not a member."""
@@ -168,6 +222,7 @@ class TestSelectTaskUseCase:
         project_repository,
         project_member_repository,
         task_repository,
+        task_log_repository,
         existing_project,
         project_member,
         member_user_id,
@@ -193,6 +248,7 @@ class TestSelectTaskUseCase:
         project_repository,
         project_member_repository,
         task_repository,
+        task_log_repository,
         existing_project,
         project_member,
         member_user_id,
@@ -223,6 +279,7 @@ class TestSelectTaskUseCase:
         project_repository,
         project_member_repository,
         task_repository,
+        task_log_repository,
         existing_project,
         project_member,
         member_user_id,
@@ -255,6 +312,7 @@ class TestSelectTaskUseCase:
         project_repository,
         project_member_repository,
         task_repository,
+        task_log_repository,
         existing_project,
         project_member,
         member_user_id,
@@ -288,6 +346,7 @@ class TestSelectTaskUseCase:
         project_repository,
         project_member_repository,
         task_repository,
+        task_log_repository,
         existing_project,
         project_member,
         todo_task,
@@ -326,6 +385,7 @@ class TestSelectTaskUseCase:
         project_repository,
         project_member_repository,
         task_repository,
+        task_log_repository,
         existing_project,
         project_member,
         todo_task,
@@ -347,6 +407,7 @@ class TestSelectTaskUseCase:
         task_repository.find_by_id.return_value = todo_task
         task_repository.find_by_assignee.return_value = existing_tasks
         task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,

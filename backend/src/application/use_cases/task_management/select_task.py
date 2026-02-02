@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from uuid import UUID
 
-from backend.src.domain.entities import Task, TaskStatus, Workload
+from backend.src.domain.entities import Task, TaskLog, TaskStatus, Workload
 from backend.src.domain.errors import (
     ProjectAccessDeniedError,
     ProjectNotFoundError,
@@ -15,6 +15,7 @@ from backend.src.domain.errors import (
 from backend.src.domain.ports.repositories import (
     ProjectMemberRepository,
     ProjectRepository,
+    TaskLogRepository,
     TaskRepository,
 )
 
@@ -36,10 +37,12 @@ class SelectTaskUseCase:
         project_repository: ProjectRepository,
         project_member_repository: ProjectMemberRepository,
         task_repository: TaskRepository,
+        task_log_repository: TaskLogRepository,
     ):
         self.project_repository = project_repository
         self.project_member_repository = project_member_repository
         self.task_repository = task_repository
+        self.task_log_repository = task_log_repository
 
     async def execute(self, input: SelectTaskInput) -> Task:
         """
@@ -48,6 +51,7 @@ class SelectTaskUseCase:
         BR-ASSIGN-001: Employees select tasks themselves.
         BR-ASSIGN-002: Only tasks matching Employee's Role can be selected.
         BR-ASSIGN-003: Cannot select if workload would exceed Impossible threshold.
+        BR-ASSIGN-005: All assignments are logged in history.
         BR-TASK-004: Cannot select if difficulty is not set.
 
         Raises:
@@ -110,5 +114,12 @@ class SelectTaskUseCase:
         # Select the task
         task.select(member.id)
         await self.task_repository.save(task)
+
+        # Create audit log (BR-ASSIGN-005)
+        log = TaskLog.create_assignment_log(
+            task_id=task.id,
+            author_id=member.id,
+        )
+        await self.task_log_repository.save(log)
 
         return task

@@ -1,14 +1,18 @@
-from typing import Optional, Protocol
+from typing import Protocol
 from uuid import UUID
 
 from backend.src.domain.entities import TaskLog
 
 
 class TaskLogRepository(Protocol):
-    async def get(self, task_log_id: UUID) -> Optional[TaskLog]: ...
+    """Port for task log persistence operations.
 
-    async def create(self, task_log: TaskLog) -> TaskLog: ...
+    BR-ASSIGN-005: All assignments and un-assignments are logged in history.
+    BR-ABANDON-002: Reason for abandonment is recorded.
+    """
 
-    async def update(self, task_log: TaskLog) -> TaskLog: ...
+    async def save(self, task_log: TaskLog) -> TaskLog: ...
 
-    async def delete(self, task_log_id: UUID) -> None: ...
+    async def find_by_task(self, task_id: UUID) -> list[TaskLog]: ...
+
+    async def find_by_author(self, author_id: UUID) -> list[TaskLog]: ...

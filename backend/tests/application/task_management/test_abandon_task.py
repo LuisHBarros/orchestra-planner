@@ -13,6 +13,8 @@ from backend.src.domain.entities import (
     ProjectMember,
     SeniorityLevel,
     Task,
+    TaskLog,
+    TaskLogType,
     TaskStatus,
 )
 from backend.src.domain.errors import TaskNotFoundError, TaskNotOwnedError
@@ -29,10 +31,16 @@ def task_repository():
 
 
 @pytest.fixture
-def use_case(project_member_repository, task_repository):
+def task_log_repository():
+    return AsyncMock()
+
+
+@pytest.fixture
+def use_case(project_member_repository, task_repository, task_log_repository):
     return AbandonTaskUseCase(
         project_member_repository=project_member_repository,
         task_repository=task_repository,
+        task_log_repository=task_log_repository,
     )
 
 
@@ -81,18 +89,21 @@ class TestAbandonTaskUseCase:
         use_case,
         project_member_repository,
         task_repository,
+        task_log_repository,
         project_member,
         doing_task,
         member_user_id,
     ):
-        """Owner can abandon their task."""
+        """Owner can abandon their task with a reason."""
         task_repository.find_by_id.return_value = doing_task
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
 
         input_data = AbandonTaskInput(
             task_id=doing_task.id,
             user_id=member_user_id,
+            reason="Blocked by external dependency",
         )
 
         result = await use_case.execute(input_data)
@@ -102,8 +113,80 @@ class TestAbandonTaskUseCase:
         task_repository.save.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_creates_abandon_log_with_reason(
+        self,
+        use_case,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        project_member,
+        doing_task,
+        member_user_id,
+    ):
+        """BR-ABANDON-002: Creates audit log with abandonment reason."""
+        task_repository.find_by_id.return_value = doing_task
+        project_member_repository.find_by_project_and_user.return_value = project_member
+        task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
+
+        reason = "Need to focus on higher priority task"
+        input_data = AbandonTaskInput(
+            task_id=doing_task.id,
+            user_id=member_user_id,
+            reason=reason,
+        )
+
+        await use_case.execute(input_data)
+
+        task_log_repository.save.assert_called_once()
+        saved_log = task_log_repository.save.call_args[0][0]
+        assert isinstance(saved_log, TaskLog)
+        assert saved_log.log_type == TaskLogType.ABANDON
+        assert saved_log.content == reason
+        assert saved_log.task_id == doing_task.id
+        assert saved_log.author_id == project_member.id
+
+    @pytest.mark.asyncio
+    async def test_raises_value_error_when_reason_is_empty(
+        self,
+        use_case,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+    ):
+        """BR-ABANDON-002: Should raise ValueError when reason is empty."""
+        input_data = AbandonTaskInput(
+            task_id=uuid4(),
+            user_id=uuid4(),
+            reason="",
+        )
+
+        with pytest.raises(ValueError, match="Abandonment reason is required"):
+            await use_case.execute(input_data)
+
+        task_repository.find_by_id.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_raises_value_error_when_reason_is_whitespace(
+        self,
+        use_case,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+    ):
+        """BR-ABANDON-002: Should raise ValueError when reason is only whitespace."""
+        input_data = AbandonTaskInput(
+            task_id=uuid4(),
+            user_id=uuid4(),
+            reason="   ",
+        )
+
+        with pytest.raises(ValueError, match="Abandonment reason is required"):
+            await use_case.execute(input_data)
+
+    @pytest.mark.asyncio
     async def test_raises_task_not_found(
-        self, use_case, project_member_repository, task_repository
+        self, use_case, project_member_repository, task_repository, task_log_repository
     ):
         """Should raise TaskNotFoundError when task doesn't exist."""
         task_repository.find_by_id.return_value = None
@@ -111,6 +194,7 @@ class TestAbandonTaskUseCase:
         input_data = AbandonTaskInput(
             task_id=uuid4(),
             user_id=uuid4(),
+            reason="Valid reason",
         )
 
         with pytest.raises(TaskNotFoundError):
@@ -118,7 +202,12 @@ class TestAbandonTaskUseCase:
 
     @pytest.mark.asyncio
     async def test_raises_task_not_owned_when_not_assigned(
-        self, use_case, project_member_repository, task_repository, project_id
+        self,
+        use_case,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        project_id,
     ):
         """Should raise TaskNotOwnedError when task has no assignee."""
         unassigned_task = Task(
@@ -131,6 +220,7 @@ class TestAbandonTaskUseCase:
         input_data = AbandonTaskInput(
             task_id=unassigned_task.id,
             user_id=uuid4(),
+            reason="Valid reason",
         )
 
         with pytest.raises(TaskNotOwnedError):
@@ -142,6 +232,7 @@ class TestAbandonTaskUseCase:
         use_case,
         project_member_repository,
         task_repository,
+        task_log_repository,
         doing_task,
     ):
         """Should raise TaskNotOwnedError when user doesn't own the task."""
@@ -160,6 +251,7 @@ class TestAbandonTaskUseCase:
         input_data = AbandonTaskInput(
             task_id=doing_task.id,
             user_id=different_user_id,
+            reason="Valid reason",
         )
 
         with pytest.raises(TaskNotOwnedError):
@@ -171,6 +263,7 @@ class TestAbandonTaskUseCase:
         use_case,
         project_member_repository,
         task_repository,
+        task_log_repository,
         project_id,
         project_member,
         member_user_id,
@@ -190,6 +283,7 @@ class TestAbandonTaskUseCase:
         input_data = AbandonTaskInput(
             task_id=todo_task.id,
             user_id=member_user_id,
+            reason="Valid reason",
         )
 
         with pytest.raises(
@@ -198,38 +292,12 @@ class TestAbandonTaskUseCase:
             await use_case.execute(input_data)
 
     @pytest.mark.asyncio
-    async def test_saves_abandoned_task(
-        self,
-        use_case,
-        project_member_repository,
-        task_repository,
-        project_member,
-        doing_task,
-        member_user_id,
-    ):
-        """Should save the task after abandonment."""
-        task_repository.find_by_id.return_value = doing_task
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.save.return_value = None
-
-        input_data = AbandonTaskInput(
-            task_id=doing_task.id,
-            user_id=member_user_id,
-        )
-
-        await use_case.execute(input_data)
-
-        task_repository.save.assert_called_once()
-        saved_task = task_repository.save.call_args[0][0]
-        assert saved_task.status == TaskStatus.TODO
-        assert saved_task.assignee_id is None
-
-    @pytest.mark.asyncio
     async def test_task_can_be_selected_again_after_abandonment(
         self,
         use_case,
         project_member_repository,
         task_repository,
+        task_log_repository,
         project_member,
         doing_task,
         member_user_id,
@@ -238,10 +306,12 @@ class TestAbandonTaskUseCase:
         task_repository.find_by_id.return_value = doing_task
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
 
         input_data = AbandonTaskInput(
             task_id=doing_task.id,
             user_id=member_user_id,
+            reason="Need to reprioritize",
         )
 
         result = await use_case.execute(input_data)
