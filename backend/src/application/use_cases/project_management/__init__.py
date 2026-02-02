@@ -17,6 +17,10 @@ from backend.src.application.use_cases.project_management.get_project_details im
     GetProjectDetailsOutput,
     GetProjectDetailsUseCase,
 )
+from backend.src.application.use_cases.project_management.recalculate_project_schedule import (
+    RecalculateProjectScheduleInput,
+    RecalculateProjectScheduleUseCase,
+)
 
 __all__ = [
     "ConfigureProjectLLMInput",
@@ -28,4 +32,6 @@ __all__ = [
     "GetProjectDetailsInput",
     "GetProjectDetailsOutput",
     "GetProjectDetailsUseCase",
+    "RecalculateProjectScheduleInput",
+    "RecalculateProjectScheduleUseCase",
 ]
