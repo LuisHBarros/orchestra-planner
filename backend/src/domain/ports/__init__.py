@@ -6,27 +6,45 @@ They are part of the domain because they represent the domain's
 requirements from the outside world.
 """
 
-from backend.src.domain.ports.repositories.user_repository import UserRepository
-from backend.src.domain.ports.services.email_service import EmailMessage, EmailService
-from backend.src.domain.ports.services.llm_service import (
-    DifficultyEstimation,
-    LLMService,
-    ProgressEstimation,
+from backend.src.domain.ports.repositories import (
+    ProjectInviteRepository,
+    ProjectMemberRepository,
+    ProjectRepository,
+    RoleRepository,
+    TaskDependencyRepository,
+    TaskLogRepository,
+    TaskRepository,
+    UserRepository,
 )
-from backend.src.domain.ports.services.notification_service import (
+from backend.src.domain.ports.services import (
     DailyReportData,
+    DifficultyEstimation,
+    EmailMessage,
+    EmailService,
+    EncryptionService,
+    LLMService,
     NewTaskToastData,
     NotificationService,
+    ProgressEstimation,
+    TokenPair,
+    TokenService,
     WorkloadAlertData,
 )
-from backend.src.domain.ports.services.token_service import TokenPair, TokenService
 
 __all__ = [
     # Repositories
+    "ProjectInviteRepository",
+    "ProjectMemberRepository",
+    "ProjectRepository",
+    "RoleRepository",
+    "TaskDependencyRepository",
+    "TaskLogRepository",
+    "TaskRepository",
     "UserRepository",
     # Services
     "EmailService",
     "EmailMessage",
+    "EncryptionService",
     "TokenService",
     "TokenPair",
     "LLMService",

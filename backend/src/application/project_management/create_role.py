@@ -43,7 +43,7 @@ class CreateRoleUseCase:
         if not project.is_manager(input.requester_id):
             raise ManagerRequiredError("create role")
 
-        role = Role(name=input.role_name, project_id=project.id)
+        role = Role(project_id=project.id, name=input.role_name)
         await self.role_repository.save(role)
 
         return role
