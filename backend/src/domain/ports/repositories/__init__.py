@@ -8,16 +8,20 @@ from backend.src.domain.ports.repositories.project_member_repository import (
 )
 from backend.src.domain.ports.repositories.project_repository import ProjectRepository
 from backend.src.domain.ports.repositories.role_repository import RoleRepository
+from backend.src.domain.ports.repositories.task_dependency_repository import (
+    TaskDependencyRepository,
+)
 from backend.src.domain.ports.repositories.task_log_repository import TaskLogRepository
 from backend.src.domain.ports.repositories.task_repository import TaskRepository
 from backend.src.domain.ports.repositories.user_repository import UserRepository
 
 __all__ = [
-    TaskLogRepository,
-    TaskRepository,
-    UserRepository,
-    ProjectInviteRepository,
-    ProjectMemberRepository,
-    RoleRepository,
-    ProjectRepository,
+    "ProjectInviteRepository",
+    "ProjectMemberRepository",
+    "ProjectRepository",
+    "RoleRepository",
+    "TaskDependencyRepository",
+    "TaskLogRepository",
+    "TaskRepository",
+    "UserRepository",
 ]

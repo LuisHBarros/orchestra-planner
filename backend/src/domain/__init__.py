@@ -9,14 +9,22 @@ Structure:
 - rules/: Business rule constants (BR-TASK-*, BR-AUTH-*, etc.)
 """
 
-from backend.src.domain.business_rules import (
-    BusinessRule,
-    BusinessRuleViolation,
-    RuleCategory,
+import backend.src.domain.errors as errors
+import backend.src.domain.ports as ports
+import backend.src.domain.ports.repositories as repositories
+from backend.src.domain.entities import (
+    InviteStatus,
+    Project,
+    ProjectInvite,
+    ProjectMember,
+    Role,
+    SeniorityLevel,
+    Task,
+    TaskDependency,
+    TaskLog,
+    TaskLogType,
+    TaskStatus,
+    User,
+    Workload,
+    WorkloadStatus,
 )
-
-__all__ = [
-    "BusinessRule",
-    "BusinessRuleViolation",
-    "RuleCategory",
-]
