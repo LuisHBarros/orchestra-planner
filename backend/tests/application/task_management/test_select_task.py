@@ -11,14 +11,17 @@ from backend.src.application.use_cases.task_management import (
 )
 from backend.src.domain.entities import (
     Project,
+    ProjectConfig,
     ProjectMember,
     SeniorityLevel,
     Task,
+    TaskDependency,
     TaskLog,
     TaskLogType,
     TaskStatus,
 )
 from backend.src.domain.errors import (
+    ManagerRequiredError,
     ProjectAccessDeniedError,
     ProjectNotFoundError,
     TaskNotFoundError,
@@ -48,14 +51,44 @@ def task_log_repository():
 
 
 @pytest.fixture
+def task_dependency_repository():
+    return AsyncMock()
+
+
+@pytest.fixture
 def use_case(
-    project_repository, project_member_repository, task_repository, task_log_repository
+    project_repository,
+    project_member_repository,
+    task_repository,
+    task_log_repository,
+    task_dependency_repository,
 ):
     return SelectTaskUseCase(
         project_repository=project_repository,
         project_member_repository=project_member_repository,
         task_repository=task_repository,
         task_log_repository=task_log_repository,
+        task_dependency_repository=task_dependency_repository,
+    )
+
+
+@pytest.fixture
+def use_case_with_multitasking(
+    project_repository,
+    project_member_repository,
+    task_repository,
+    task_log_repository,
+    task_dependency_repository,
+):
+    """Use case with multitasking enabled."""
+    config = ProjectConfig(allow_multitasking=True)
+    return SelectTaskUseCase(
+        project_repository=project_repository,
+        project_member_repository=project_member_repository,
+        task_repository=task_repository,
+        task_log_repository=task_log_repository,
+        task_dependency_repository=task_dependency_repository,
+        config=config,
     )
 
 
@@ -90,6 +123,17 @@ def project_member(existing_project, member_user_id, role_id):
 
 
 @pytest.fixture
+def manager_member(existing_project, manager_id, role_id):
+    """Manager as project member."""
+    return ProjectMember(
+        project_id=existing_project.id,
+        user_id=manager_id,
+        role_id=role_id,
+        seniority_level=SeniorityLevel.LEAD,
+    )
+
+
+@pytest.fixture
 def todo_task(existing_project, role_id):
     return Task(
         project_id=existing_project.id,
@@ -110,6 +154,7 @@ class TestSelectTaskUseCase:
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
         existing_project,
         project_member,
         todo_task,
@@ -120,6 +165,8 @@ class TestSelectTaskUseCase:
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.find_by_id.return_value = todo_task
         task_repository.find_by_assignee.return_value = []
+        task_repository.find_by_project.return_value = [todo_task]
+        task_dependency_repository.find_by_project.return_value = []
         task_repository.save.return_value = None
         task_log_repository.save.return_value = None
 
@@ -143,6 +190,7 @@ class TestSelectTaskUseCase:
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
         existing_project,
         project_member,
         todo_task,
@@ -153,6 +201,8 @@ class TestSelectTaskUseCase:
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.find_by_id.return_value = todo_task
         task_repository.find_by_assignee.return_value = []
+        task_repository.find_by_project.return_value = [todo_task]
+        task_dependency_repository.find_by_project.return_value = []
         task_repository.save.return_value = None
         task_log_repository.save.return_value = None
 
@@ -179,6 +229,7 @@ class TestSelectTaskUseCase:
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
     ):
         """Should raise ProjectNotFoundError when project doesn't exist."""
         project_repository.find_by_id.return_value = None
@@ -200,6 +251,7 @@ class TestSelectTaskUseCase:
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
         existing_project,
     ):
         """Should raise ProjectAccessDeniedError when user is not a member."""
@@ -223,6 +275,7 @@ class TestSelectTaskUseCase:
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
         existing_project,
         project_member,
         member_user_id,
@@ -249,6 +302,7 @@ class TestSelectTaskUseCase:
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
         existing_project,
         project_member,
         member_user_id,
@@ -262,6 +316,9 @@ class TestSelectTaskUseCase:
         project_repository.find_by_id.return_value = existing_project
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.find_by_id.return_value = task_without_difficulty
+        task_repository.find_by_assignee.return_value = []
+        task_repository.find_by_project.return_value = [task_without_difficulty]
+        task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -280,6 +337,7 @@ class TestSelectTaskUseCase:
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
         existing_project,
         project_member,
         member_user_id,
@@ -295,6 +353,9 @@ class TestSelectTaskUseCase:
         project_repository.find_by_id.return_value = existing_project
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.find_by_id.return_value = doing_task
+        task_repository.find_by_assignee.return_value = []
+        task_repository.find_by_project.return_value = [doing_task]
+        task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -313,6 +374,7 @@ class TestSelectTaskUseCase:
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
         existing_project,
         project_member,
         member_user_id,
@@ -329,6 +391,8 @@ class TestSelectTaskUseCase:
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.find_by_id.return_value = task_with_different_role
         task_repository.find_by_assignee.return_value = []
+        task_repository.find_by_project.return_value = [task_with_different_role]
+        task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -342,11 +406,12 @@ class TestSelectTaskUseCase:
     @pytest.mark.asyncio
     async def test_raises_workload_exceeded(
         self,
-        use_case,
+        use_case_with_multitasking,
         project_repository,
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
         existing_project,
         project_member,
         todo_task,
@@ -368,6 +433,8 @@ class TestSelectTaskUseCase:
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.find_by_id.return_value = todo_task
         task_repository.find_by_assignee.return_value = existing_tasks
+        task_repository.find_by_project.return_value = existing_tasks + [todo_task]
+        task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -376,16 +443,17 @@ class TestSelectTaskUseCase:
         )
 
         with pytest.raises(WorkloadExceededError):
-            await use_case.execute(input_data)
+            await use_case_with_multitasking.execute(input_data)
 
     @pytest.mark.asyncio
     async def test_allows_selection_within_workload_limit(
         self,
-        use_case,
+        use_case_with_multitasking,
         project_repository,
         project_member_repository,
         task_repository,
         task_log_repository,
+        task_dependency_repository,
         existing_project,
         project_member,
         todo_task,
@@ -406,6 +474,8 @@ class TestSelectTaskUseCase:
         project_member_repository.find_by_project_and_user.return_value = project_member
         task_repository.find_by_id.return_value = todo_task
         task_repository.find_by_assignee.return_value = existing_tasks
+        task_repository.find_by_project.return_value = existing_tasks + [todo_task]
+        task_dependency_repository.find_by_project.return_value = []
         task_repository.save.return_value = None
         task_log_repository.save.return_value = None
 
@@ -415,6 +485,227 @@ class TestSelectTaskUseCase:
             user_id=member_user_id,
         )
 
+        result = await use_case_with_multitasking.execute(input_data)
+
+        assert result.status == TaskStatus.DOING
+
+
+class TestSelectTaskUseCaseManagerRestriction:
+    """Tests for BR-PROJ-002: Manager cannot select tasks."""
+
+    @pytest.mark.asyncio
+    async def test_manager_cannot_select_task(
+        self,
+        use_case,
+        project_repository,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        task_dependency_repository,
+        existing_project,
+        manager_member,
+        todo_task,
+        manager_id,
+    ):
+        """BR-PROJ-002: Manager cannot be assigned tasks."""
+        project_repository.find_by_id.return_value = existing_project
+        project_member_repository.find_by_project_and_user.return_value = manager_member
+        task_repository.find_by_id.return_value = todo_task
+        task_repository.find_by_assignee.return_value = []
+        task_repository.find_by_project.return_value = [todo_task]
+        task_dependency_repository.find_by_project.return_value = []
+
+        input_data = SelectTaskInput(
+            project_id=existing_project.id,
+            task_id=todo_task.id,
+            user_id=manager_id,
+        )
+
+        with pytest.raises(ManagerRequiredError):
+            await use_case.execute(input_data)
+
+
+class TestSelectTaskUseCaseDependencies:
+    """Tests for BR-DEP-001/003: Dependencies must be satisfied."""
+
+    @pytest.mark.asyncio
+    async def test_cannot_select_task_with_unfinished_dependencies(
+        self,
+        use_case,
+        project_repository,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        task_dependency_repository,
+        existing_project,
+        project_member,
+        member_user_id,
+    ):
+        """BR-DEP-001: Cannot select task with unfinished dependencies."""
+        blocking_task = Task(
+            project_id=existing_project.id,
+            title="Blocking Task",
+            difficulty_points=3,
+        )  # Status is TODO (not DONE)
+
+        blocked_task = Task(
+            project_id=existing_project.id,
+            title="Blocked Task",
+            difficulty_points=5,
+        )
+
+        dependency = TaskDependency(
+            blocking_task_id=blocking_task.id,
+            blocked_task_id=blocked_task.id,
+        )
+
+        project_repository.find_by_id.return_value = existing_project
+        project_member_repository.find_by_project_and_user.return_value = project_member
+        task_repository.find_by_id.return_value = blocked_task
+        task_repository.find_by_assignee.return_value = []
+        task_repository.find_by_project.return_value = [blocking_task, blocked_task]
+        task_dependency_repository.find_by_project.return_value = [dependency]
+
+        input_data = SelectTaskInput(
+            project_id=existing_project.id,
+            task_id=blocked_task.id,
+            user_id=member_user_id,
+        )
+
+        with pytest.raises(TaskNotSelectableError, match="dependencies"):
+            await use_case.execute(input_data)
+
+    @pytest.mark.asyncio
+    async def test_can_select_task_with_finished_dependencies(
+        self,
+        use_case,
+        project_repository,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        task_dependency_repository,
+        existing_project,
+        project_member,
+        member_user_id,
+    ):
+        """Can select task when all dependencies are Done."""
+        blocking_task = Task(
+            project_id=existing_project.id,
+            title="Blocking Task",
+            difficulty_points=3,
+        )
+        blocking_task.select(uuid4())  # Move to DOING
+        blocking_task.complete()  # Move to DONE
+
+        blocked_task = Task(
+            project_id=existing_project.id,
+            title="Blocked Task",
+            difficulty_points=5,
+        )
+
+        dependency = TaskDependency(
+            blocking_task_id=blocking_task.id,
+            blocked_task_id=blocked_task.id,
+        )
+
+        project_repository.find_by_id.return_value = existing_project
+        project_member_repository.find_by_project_and_user.return_value = project_member
+        task_repository.find_by_id.return_value = blocked_task
+        task_repository.find_by_assignee.return_value = []
+        task_repository.find_by_project.return_value = [blocking_task, blocked_task]
+        task_dependency_repository.find_by_project.return_value = [dependency]
+        task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
+
+        input_data = SelectTaskInput(
+            project_id=existing_project.id,
+            task_id=blocked_task.id,
+            user_id=member_user_id,
+        )
+
         result = await use_case.execute(input_data)
+
+        assert result.status == TaskStatus.DOING
+
+
+class TestSelectTaskUseCaseSingleTaskFocus:
+    """Tests for BR-ASSIGN-004: Single-task focus."""
+
+    @pytest.mark.asyncio
+    async def test_cannot_select_when_already_doing_task(
+        self,
+        use_case,
+        project_repository,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        task_dependency_repository,
+        existing_project,
+        project_member,
+        todo_task,
+        member_user_id,
+    ):
+        """BR-ASSIGN-004: Cannot select when already working on another task."""
+        existing_doing_task = Task(
+            project_id=existing_project.id,
+            title="Already doing",
+            difficulty_points=3,
+        )
+        existing_doing_task.select(project_member.id)
+
+        project_repository.find_by_id.return_value = existing_project
+        project_member_repository.find_by_project_and_user.return_value = project_member
+        task_repository.find_by_id.return_value = todo_task
+        task_repository.find_by_assignee.return_value = [existing_doing_task]
+        task_repository.find_by_project.return_value = [existing_doing_task, todo_task]
+        task_dependency_repository.find_by_project.return_value = []
+
+        input_data = SelectTaskInput(
+            project_id=existing_project.id,
+            task_id=todo_task.id,
+            user_id=member_user_id,
+        )
+
+        with pytest.raises(TaskNotSelectableError, match="another task"):
+            await use_case.execute(input_data)
+
+    @pytest.mark.asyncio
+    async def test_can_select_when_multitasking_enabled(
+        self,
+        use_case_with_multitasking,
+        project_repository,
+        project_member_repository,
+        task_repository,
+        task_log_repository,
+        task_dependency_repository,
+        existing_project,
+        project_member,
+        todo_task,
+        member_user_id,
+    ):
+        """Can select multiple tasks when multitasking is enabled."""
+        existing_doing_task = Task(
+            project_id=existing_project.id,
+            title="Already doing",
+            difficulty_points=3,
+        )
+        existing_doing_task.select(project_member.id)
+
+        project_repository.find_by_id.return_value = existing_project
+        project_member_repository.find_by_project_and_user.return_value = project_member
+        task_repository.find_by_id.return_value = todo_task
+        task_repository.find_by_assignee.return_value = [existing_doing_task]
+        task_repository.find_by_project.return_value = [existing_doing_task, todo_task]
+        task_dependency_repository.find_by_project.return_value = []
+        task_repository.save.return_value = None
+        task_log_repository.save.return_value = None
+
+        input_data = SelectTaskInput(
+            project_id=existing_project.id,
+            task_id=todo_task.id,
+            user_id=member_user_id,
+        )
+
+        result = await use_case_with_multitasking.execute(input_data)
 
         assert result.status == TaskStatus.DOING

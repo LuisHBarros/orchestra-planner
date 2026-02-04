@@ -3,8 +3,9 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from backend.src.domain.entities import Task, TaskLog, TaskStatus, Workload
+from backend.src.domain.entities import ProjectConfig, Task, TaskLog
 from backend.src.domain.errors import (
+    ManagerRequiredError,
     ProjectAccessDeniedError,
     ProjectNotFoundError,
     TaskNotFoundError,
@@ -14,8 +15,13 @@ from backend.src.domain.errors import (
 from backend.src.domain.ports.repositories import (
     ProjectMemberRepository,
     ProjectRepository,
+    TaskDependencyRepository,
     TaskLogRepository,
     TaskRepository,
+)
+from backend.src.domain.services.task_selection_policy import (
+    SelectionContext,
+    TaskSelectionPolicy,
 )
 
 
@@ -29,7 +35,18 @@ class SelectTaskInput:
 
 
 class SelectTaskUseCase:
-    """Use case for selecting (self-assigning) a task."""
+    """
+    Use case for selecting (self-assigning) a task.
+
+    Uses TaskSelectionPolicy to enforce all business rules:
+    - BR-PROJ-002: Manager cannot select tasks
+    - BR-TASK-004: Task must have difficulty points
+    - BR-ASSIGN-002: Role must match (if required)
+    - BR-ASSIGN-003: Workload cannot exceed Impossible threshold
+    - BR-ASSIGN-004: Single-task focus (unless multitasking enabled)
+    - BR-DEP-001/003: Dependencies must be satisfied
+    - BR-ASSIGN-005: All assignments are logged
+    """
 
     def __init__(
         self,
@@ -37,39 +54,43 @@ class SelectTaskUseCase:
         project_member_repository: ProjectMemberRepository,
         task_repository: TaskRepository,
         task_log_repository: TaskLogRepository,
+        task_dependency_repository: TaskDependencyRepository,
+        selection_policy: TaskSelectionPolicy | None = None,
+        config: ProjectConfig | None = None,
     ):
         self.project_repository = project_repository
         self.project_member_repository = project_member_repository
         self.task_repository = task_repository
         self.task_log_repository = task_log_repository
+        self.task_dependency_repository = task_dependency_repository
+        self.selection_policy = selection_policy or TaskSelectionPolicy()
+        self.config = config or ProjectConfig.default()
 
     async def execute(self, input: SelectTaskInput) -> Task:
         """
         Select a task for work (self-assignment).
 
-        BR-ASSIGN-001: Employees select tasks themselves.
-        BR-ASSIGN-002: Only tasks matching Employee's Role can be selected.
-        BR-ASSIGN-003: Cannot select if workload would exceed Impossible threshold.
-        BR-ASSIGN-005: All assignments are logged in history.
-        BR-TASK-004: Cannot select if difficulty is not set.
-
         Raises:
             ProjectNotFoundError: If project doesn't exist.
             ProjectAccessDeniedError: If user is not a project member.
             TaskNotFoundError: If task doesn't exist.
+            ManagerRequiredError: If user is manager (BR-PROJ-002).
             TaskNotSelectableError: If task cannot be selected.
             WorkloadExceededError: If selecting would exceed workload limit.
         """
+        # Fetch project
         project = await self.project_repository.find_by_id(input.project_id)
         if project is None:
             raise ProjectNotFoundError(str(input.project_id))
 
+        # Fetch member
         member = await self.project_member_repository.find_by_project_and_user(
             input.project_id, input.user_id
         )
         if member is None:
             raise ProjectAccessDeniedError(str(input.user_id), str(input.project_id))
 
+        # Fetch task
         task = await self.task_repository.find_by_id(input.task_id)
         if task is None:
             raise TaskNotFoundError(str(input.task_id))
@@ -77,38 +98,28 @@ class SelectTaskUseCase:
         if task.project_id != input.project_id:
             raise TaskNotFoundError(str(input.task_id))
 
-        # BR-TASK-004: Cannot select if difficulty is not set
-        if task.difficulty_points is None:
-            raise TaskNotSelectableError(
-                str(input.task_id), "has no difficulty points set"
-            )
+        # Fetch context for policy evaluation
+        assigned_tasks = await self.task_repository.find_by_assignee(member.id)
+        dependencies = await self.task_dependency_repository.find_by_project(
+            input.project_id
+        )
+        all_project_tasks = await self.task_repository.find_by_project(input.project_id)
 
-        # Check task is in correct status
-        if task.status != TaskStatus.TODO:
-            raise TaskNotSelectableError(
-                str(input.task_id), f"is in {task.status.value} status"
-            )
+        # Build selection context
+        context = SelectionContext(
+            task=task,
+            project=project,
+            member=member,
+            assigned_tasks=assigned_tasks,
+            dependencies=dependencies,
+            all_project_tasks=all_project_tasks,
+            config=self.config,
+        )
 
-        # BR-ASSIGN-002: Check role match if task requires specific role
-        if (
-            task.required_role_id is not None
-            and task.required_role_id != member.role_id
-        ):
-            raise TaskNotSelectableError(
-                str(input.task_id), "requires a different role"
-            )
-
-        # BR-ASSIGN-003: Check workload capacity
-        current_tasks = await self.task_repository.find_by_assignee(member.id)
-        current_points = [
-            t.difficulty_points
-            for t in current_tasks
-            if t.status == TaskStatus.DOING and t.difficulty_points is not None
-        ]
-        workload = Workload.calculate(current_points, member.seniority_level)
-
-        if not workload.can_take_additional_points(task.difficulty_points):
-            raise WorkloadExceededError(float(workload.ratio))
+        # Evaluate selection policy
+        violation = self.selection_policy.get_first_violation(context)
+        if violation:
+            self._raise_appropriate_error(violation, task, input)
 
         # Select the task
         task.select(member.id)
@@ -122,3 +133,27 @@ class SelectTaskUseCase:
         await self.task_log_repository.save(log)
 
         return task
+
+    def _raise_appropriate_error(
+        self,
+        violation,
+        task: Task,
+        input: SelectTaskInput,
+    ) -> None:
+        """Map policy violations to appropriate domain errors."""
+        rule_id = violation.rule_id
+
+        if rule_id == "BR-PROJ-002":
+            raise ManagerRequiredError("Managers cannot select tasks (BR-PROJ-002)")
+        elif rule_id == "BR-ASSIGN-003":
+            raise WorkloadExceededError(0)  # Ratio is in the message
+        elif rule_id in (
+            "BR-TASK-004",
+            "BR-TASK-003",
+            "BR-ASSIGN-002",
+            "BR-DEP-001",
+            "BR-ASSIGN-004",
+        ):
+            raise TaskNotSelectableError(str(input.task_id), violation.message)
+        else:
+            raise TaskNotSelectableError(str(input.task_id), violation.message)

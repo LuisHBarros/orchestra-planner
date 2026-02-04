@@ -1,6 +1,7 @@
 """Domain entities for Orchestra Planner."""
 
 from .project import Project
+from .project_config import ProjectConfig, WorkloadThresholds
 from .project_invite import INVITE_EXPIRATION_DAYS, InviteStatus, ProjectInvite
 from .project_member import ProjectMember
 from .role import Role
@@ -17,6 +18,7 @@ __all__ = [
     "MAGIC_LINK_EXPIRATION_MINUTES",
     # Project
     "Project",
+    "ProjectConfig",
     "ProjectMember",
     "ProjectInvite",
     "InviteStatus",
@@ -35,5 +37,6 @@ __all__ = [
     # Workload
     "Workload",
     "WorkloadStatus",
+    "WorkloadThresholds",
     "DEFAULT_BASE_CAPACITY",
 ]
