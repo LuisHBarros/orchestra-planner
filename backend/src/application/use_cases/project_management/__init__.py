@@ -12,6 +12,11 @@ from backend.src.application.use_cases.project_management.create_role import (
     CreateRoleInput,
     CreateRoleUseCase,
 )
+from backend.src.application.use_cases.project_management.fire_employee import (
+    FireEmployeeInput,
+    FireEmployeeUseCase,
+    MemberNotFoundError,
+)
 from backend.src.application.use_cases.project_management.get_project_details import (
     GetProjectDetailsInput,
     GetProjectDetailsOutput,
@@ -29,9 +34,12 @@ __all__ = [
     "CreateProjectUseCase",
     "CreateRoleInput",
     "CreateRoleUseCase",
+    "FireEmployeeInput",
+    "FireEmployeeUseCase",
     "GetProjectDetailsInput",
     "GetProjectDetailsOutput",
     "GetProjectDetailsUseCase",
+    "MemberNotFoundError",
     "RecalculateProjectScheduleInput",
     "RecalculateProjectScheduleUseCase",
 ]
