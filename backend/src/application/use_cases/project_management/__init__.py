@@ -26,6 +26,11 @@ from backend.src.application.use_cases.project_management.recalculate_project_sc
     RecalculateProjectScheduleInput,
     RecalculateProjectScheduleUseCase,
 )
+from backend.src.application.use_cases.project_management.resign_from_project import (
+    ManagerCannotResignError,
+    ResignFromProjectInput,
+    ResignFromProjectUseCase,
+)
 
 __all__ = [
     "ConfigureProjectLLMInput",
@@ -39,7 +44,10 @@ __all__ = [
     "GetProjectDetailsInput",
     "GetProjectDetailsOutput",
     "GetProjectDetailsUseCase",
+    "ManagerCannotResignError",
     "MemberNotFoundError",
     "RecalculateProjectScheduleInput",
     "RecalculateProjectScheduleUseCase",
+    "ResignFromProjectInput",
+    "ResignFromProjectUseCase",
 ]
