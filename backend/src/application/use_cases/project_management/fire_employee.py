@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from uuid import UUID
 
-from backend.src.domain.entities import ProjectMember, Task, TaskStatus
+from backend.src.domain.entities import Task, TaskStatus
 from backend.src.domain.errors import (
     ManagerRequiredError,
     ProjectNotFoundError,

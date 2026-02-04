@@ -22,6 +22,8 @@ Task: A unit of work with a difficulty score and status.
 
 Workload: A calculated ratio representing how busy an Employee is based on their active tasks and seniority.
 
+Working Calendar: A per-project calendar that defines which dates are working days. Used for scheduling calculations, deadline warnings, and notifications.
+
 2. Business Rules (BR)
 BR-AUTH: Authentication & Identity
 BR-AUTH-001: Users must authenticate via Magic Link (email-based token). Passwords are not used.
@@ -37,7 +39,24 @@ BR-PROJ-002: A Manager cannot be assigned Tasks. Their role is strictly administ
 
 BR-PROJ-003: A Project's "Expected End Date" is dynamic. It is calculated based on the critical path of tasks within the project.
 
-BR-PROJ-004: Only the Manager can edit Project settings (name, description, LLM configuration).
+BR-PROJ-004: Only the Manager can edit Project settings (name, description, LLM configuration, working calendar).
+
+BR-WDAY: Working Calendar
+BR-WDAY-001: Each Project has its own Working Calendar that defines which dates are working days.
+
+BR-WDAY-002: The Working Calendar is calendar-based, allowing Managers to mark specific dates as working or non-working (e.g., holidays, company closures).
+
+BR-WDAY-003: New projects default to Monday through Friday as working days (traditional 5-day week).
+
+BR-WDAY-004: Only the Manager can modify the Working Calendar.
+
+BR-WDAY-005: When the Working Calendar changes, all task schedules (including tasks in Doing status) are immediately recalculated.
+
+BR-WDAY-006: If a task has a manual date override (BR-SCHED-005) that falls on a newly marked non-working day, the system automatically shifts the date to the next available working day and alerts the Manager.
+
+BR-WDAY-007: Schedule calculations (duration, start/end dates) only count working days. Non-working days are skipped.
+
+BR-WDAY-008: Working Calendar changes do not affect Workload calculations (BR-WORK). Workload remains based on task difficulty and seniority multipliers.
 
 BR-ROLE: Roles & Seniority
 BR-ROLE-001: Roles are created by the Manager.
@@ -135,15 +154,19 @@ BR-ABANDON-002: The user must provide a reason for abandonment.
 BR-ABANDON-003: The task returns to Todo status immediately.
 
 BR-SCHED: Scheduling & Time
-BR-SCHED-001: A task is considered Delayed if Current Date > Expected End Date.
+BR-SCHED-001: A task is considered Delayed if Current Date > Expected End Date (comparing only working days per the Project's Working Calendar).
 
-BR-SCHED-002: Schedule propagation flows downstream. If Task A is delayed by 2 days, dependent Task B's start date shifts by 2 days.
+BR-SCHED-002: Schedule propagation flows downstream. If Task A is delayed by 2 working days, dependent Task B's start date shifts by 2 working days.
 
-BR-SCHED-003: A task's Expected Start Date cannot be earlier than the Max(Actual End Date) of all its dependencies.
+BR-SCHED-003: A task's Expected Start Date cannot be earlier than the Max(Actual End Date) of all its dependencies. Start dates must fall on a working day.
 
-BR-SCHED-005: If a task has already started, changing the schedule only affects the End Date, not the Start Date.
+BR-SCHED-004: Task duration is calculated in working days only. Non-working days (as defined in the Project's Working Calendar) are skipped when computing expected end dates.
 
-BR-SCHED-006: The Project's Expected End Date is the latest End Date of all tasks in the project.
+BR-SCHED-005: If a task has already started (status = Doing), changing the schedule only affects the End Date, not the Start Date. However, if the Start Date falls on a newly marked non-working day, it remains unchanged (work already began).
+
+BR-SCHED-006: The Project's Expected End Date is the latest End Date of all tasks in the project (must be a working day).
+
+BR-SCHED-007: When the Working Calendar is modified, the system triggers an immediate schedule recalculation for all affected tasks (UC-061).
 
 BR-LLM: AI Integration
 BR-LLM-001: LLM features are optional and per-project.
@@ -157,11 +180,15 @@ Estimate Task Difficulty based on description.
 Calculate % progress based on textual reports.
 
 BR-NOTIF: Notifications
-BR-NOTIF-001: Managers receive a Daily Report summarizing progress and blockers.
+BR-NOTIF-001: Managers receive a Daily Report summarizing progress and blockers. Daily Reports are only sent on working days (per the Project's Working Calendar).
 
 BR-NOTIF-002: Alerts are sent to Managers if an Employee's workload becomes Impossible (via manual override or difficulty change).
 
 BR-NOTIF-003: "Toasts" (New Task Alerts) are sent to Employees when a task matching their role is added.
+
+BR-NOTIF-004: Deadline-related notifications respect the Working Calendar: if a notification would be scheduled for a non-working day, it is sent on the last working day before that date.
+
+BR-NOTIF-005: When a manual date override is shifted due to Working Calendar changes (BR-WDAY-006), an alert is sent to the Manager indicating the conflict and the automatic resolution.
 
 Appendix A: Functional Use Cases (UC)
 Group 1: Authentication
@@ -211,6 +238,28 @@ UC-013: Get Project Details
 Actor: Member
 
 Outcome: Returns dashboard data (tasks, members, status).
+
+UC-014: Configure Working Calendar
+
+Actor: Manager
+
+Input: List of dates to mark as working or non-working
+
+Outcome: Working Calendar updated. Schedule recalculation triggered (UC-061). Manager alerted if any manual date overrides were shifted (BR-WDAY-006).
+
+UC-015: View Working Calendar
+
+Actor: Member
+
+Outcome: Returns the Project's Working Calendar (list of working/non-working dates).
+
+UC-016: Set Default Working Days
+
+Actor: Manager
+
+Input: Days of week to use as default working days (e.g., Mon-Fri)
+
+Outcome: Default working days pattern updated. Affects future dates without explicit overrides.
 
 Group 3: Invitations
 UC-020: Create Project Invite
@@ -397,14 +446,22 @@ Actor: Manager
 
 Input: Task ID, New Date
 
+Precondition: New Date must be a working day (per Project's Working Calendar).
+
 Outcome: Task date fixed. Propagation triggers (UC-061).
+
+UC-065: Recalculate Schedule on Calendar Change
+
+Actor: System (triggered by UC-014)
+
+Outcome: All task schedules recalculated using the updated Working Calendar. Tasks with dates on non-working days are shifted to the next working day. Conflict alerts sent (UC-085).
 
 Group 8: Notifications
 UC-080: Send Manager Daily Report
 
-Trigger: Schedule (e.g., 8:00 AM)
+Trigger: Schedule (e.g., 8:00 AM) on working days only (per BR-NOTIF-001)
 
-Outcome: Email with project health summary.
+Outcome: Email with project health summary. Skipped on non-working days.
 
 UC-081: Send Workload Alert
 
@@ -420,12 +477,18 @@ Outcome: In-app notification to relevant Roles.
 
 UC-083: Send Employee Daily Email
 
-Trigger: Schedule.
+Trigger: Schedule on working days only.
 
-Outcome: Summary of assigned tasks and deadlines.
+Outcome: Summary of assigned tasks and deadlines. Skipped on non-working days.
 
 UC-084: Send Deadline Warning
 
-Trigger: Task is 24h from deadline and not Done.
+Trigger: Task is 1 working day from deadline and not Done. If the working day before the deadline is non-working, send on the last working day before that (per BR-NOTIF-004).
 
 Outcome: Email to Assignee.
+
+UC-085: Send Working Calendar Conflict Alert
+
+Trigger: Manual date override shifted due to Working Calendar change (BR-WDAY-006).
+
+Outcome: Alert to Manager with affected task details and new dates.
