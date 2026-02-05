@@ -245,6 +245,7 @@ class Container:
         """Create RemoveFromTaskUseCase with dependencies."""
         return RemoveFromTaskUseCase(
             project_repository=self.repositories.project,
+            project_member_repository=self.repositories.project_member,
             task_repository=self.repositories.task,
             task_log_repository=self.repositories.task_log,
         )
