@@ -1,7 +1,7 @@
 # ADR 003: Manager-as-Member Modeling
 
 - **Date:** 2026-02-04
-- **Author:** Development Team
+- **Author:** luishbarros
 - **Status:** accepted
 
 ## Context
