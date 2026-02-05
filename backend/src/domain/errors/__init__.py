@@ -44,6 +44,7 @@ from backend.src.domain.errors.project import (
 from backend.src.domain.errors.task import (
     CircularDependencyError,
     InvalidStatusTransitionError,
+    ScheduleUpdateError,
     TaskError,
     TaskNotAssignedError,
     TaskNotFoundError,
@@ -72,6 +73,7 @@ __all__ = [
     "TaskNotAssignedError",
     "TaskNotOwnedError",
     "CircularDependencyError",
+    "ScheduleUpdateError",
     # Workload
     "WorkloadError",
     "WorkloadExceededError",

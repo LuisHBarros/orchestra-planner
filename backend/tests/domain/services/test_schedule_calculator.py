@@ -36,21 +36,21 @@ class TestScheduleCalculatorEstimateDuration:
 
     def test_estimates_duration_for_mid_level(self, calculator):
         """Mid-level (1.0x multiplier) should take standard time."""
-        # 5 points / 2 points per day = 2.5 -> rounds to 2 days
+        # 5 points / 2 points per day = 2.5 -> ceil to 3 days
         duration = calculator.estimate_duration_days(5, SeniorityLevel.MID)
-        assert duration == 2
+        assert duration == 3
 
     def test_estimates_duration_for_senior(self, calculator):
         """Senior (1.3x multiplier) should be faster."""
-        # 5 points / (2 * 1.3) = 5 / 2.6 = 1.92 -> 2 days
+        # 5 points / (2 * 1.3) = 5 / 2.6 = 1.92 -> ceil to 2 days
         duration = calculator.estimate_duration_days(5, SeniorityLevel.SENIOR)
         assert duration == 2
 
     def test_estimates_duration_for_junior(self, calculator):
         """Junior (0.6x multiplier) should be slower."""
-        # 5 points / (2 * 0.6) = 5 / 1.2 = 4.17 -> 4 days
+        # 5 points / (2 * 0.6) = 5 / 1.2 = 4.17 -> ceil to 5 days
         duration = calculator.estimate_duration_days(5, SeniorityLevel.JUNIOR)
-        assert duration == 4
+        assert duration == 5
 
     def test_returns_minimum_one_day_for_zero_points(self, calculator):
         """Should return at least 1 day for zero or no points."""
@@ -60,6 +60,21 @@ class TestScheduleCalculatorEstimateDuration:
     def test_returns_minimum_one_day_for_small_tasks(self, calculator):
         """Should return at least 1 day for very small tasks."""
         assert calculator.estimate_duration_days(1, SeniorityLevel.SENIOR) >= 1
+
+    def test_uses_ceiling_not_half_even_rounding(self, calculator):
+        """Should use ceiling to avoid underestimating task duration."""
+        # 4 points / 2 points per day = 2.0 exactly -> 2 days
+        assert calculator.estimate_duration_days(4, SeniorityLevel.MID) == 2
+        # 5 points / 2 points per day = 2.5 -> ceil to 3 days (not round to 2)
+        assert calculator.estimate_duration_days(5, SeniorityLevel.MID) == 3
+        # 3 points / 2 points per day = 1.5 -> ceil to 2 days (not round to 2)
+        assert calculator.estimate_duration_days(3, SeniorityLevel.MID) == 2
+
+    def test_uses_ceiling_with_custom_points_per_day(self):
+        """Should round up non-integer durations with non-default rate."""
+        custom_calculator = ScheduleCalculator(points_per_day=Decimal("3"))
+        # 7 points / 3 points per day = 2.33 -> ceil to 3 days
+        assert custom_calculator.estimate_duration_days(7, SeniorityLevel.MID) == 3
 
 
 class TestScheduleCalculatorAddWorkingDays:
@@ -81,6 +96,35 @@ class TestScheduleCalculatorAddWorkingDays:
         friday = datetime(2024, 1, 12, 9, 0, 0, tzinfo=timezone.utc)
         result = calculator._add_working_days(friday, 1)
         assert result.weekday() == 0  # Monday
+
+    def test_handles_zero_days(self, calculator, start_date):
+        """Adding 0 working days should return the same date."""
+        result = calculator._add_working_days(start_date, 0)
+        assert result == start_date
+
+    def test_subtracts_working_days_with_negative_value(self, calculator):
+        """Should subtract working days when given negative value."""
+        # Wednesday - 2 working days = Monday
+        wednesday = datetime(2024, 1, 10, 9, 0, 0, tzinfo=timezone.utc)
+        result = calculator._add_working_days(wednesday, -2)
+        assert result.weekday() == 0  # Monday
+        assert result.day == 8
+
+    def test_subtracts_working_days_skipping_weekends(self, calculator):
+        """Should skip weekends when subtracting days."""
+        # Monday - 1 working day = Friday (previous week)
+        monday = datetime(2024, 1, 8, 9, 0, 0, tzinfo=timezone.utc)
+        result = calculator._add_working_days(monday, -1)
+        assert result.weekday() == 4  # Friday
+        assert result.day == 5
+
+    def test_subtracts_multiple_working_days_across_weekend(self, calculator):
+        """Should correctly subtract days across weekend boundaries."""
+        # Tuesday - 3 working days = Thursday (previous week)
+        tuesday = datetime(2024, 1, 9, 9, 0, 0, tzinfo=timezone.utc)
+        result = calculator._add_working_days(tuesday, -3)
+        assert result.weekday() == 3  # Thursday
+        assert result.day == 4
 
 
 class TestScheduleCalculatorTopologicalSort:
@@ -265,6 +309,109 @@ class TestScheduleCalculatorCalculateSchedule:
         )
 
         assert senior_duration < junior_duration
+
+
+class TestScheduleCalculatorCriticalPath:
+    """Tests for critical path calculation with backward pass."""
+
+    def test_calculates_correct_slack_for_parallel_paths(
+        self, calculator, project_id, start_date
+    ):
+        """Should correctly calculate slack when tasks have parallel paths."""
+        # Create two parallel paths:
+        # Path 1: A (2 days) -> B (2 days) = 4 days total
+        # Path 2: C (1 day) = 1 day total
+        # C should have 3 days of slack
+        task_a = Task(project_id=project_id, title="Task A", difficulty_points=4)
+        task_b = Task(project_id=project_id, title="Task B", difficulty_points=4)
+        task_c = Task(project_id=project_id, title="Task C", difficulty_points=2)
+
+        dependencies = [
+            TaskDependency(blocking_task_id=task_a.id, blocked_task_id=task_b.id),
+        ]
+
+        schedule = calculator.calculate_schedule(
+            tasks=[task_a, task_b, task_c],
+            dependencies=dependencies,
+            project_start_date=start_date,
+        )
+
+        # A and B should be on critical path (zero or near-zero slack)
+        assert schedule.task_schedules[task_a.id].is_on_critical_path
+        assert schedule.task_schedules[task_b.id].is_on_critical_path
+        # C should have slack (not on critical path)
+        assert schedule.task_schedules[task_c.id].slack_days > 0
+        assert not schedule.task_schedules[task_c.id].is_on_critical_path
+
+    def test_backward_pass_calculates_latest_start_correctly(
+        self, calculator, project_id, start_date
+    ):
+        """Backward pass should correctly calculate latest start using negative days."""
+        # Linear chain: A -> B -> C
+        # Each 2 days, total 6 days
+        # Latest start of A should be same as earliest start (critical path)
+        task_a = Task(project_id=project_id, title="Task A", difficulty_points=4)
+        task_b = Task(project_id=project_id, title="Task B", difficulty_points=4)
+        task_c = Task(project_id=project_id, title="Task C", difficulty_points=4)
+
+        dependencies = [
+            TaskDependency(blocking_task_id=task_a.id, blocked_task_id=task_b.id),
+            TaskDependency(blocking_task_id=task_b.id, blocked_task_id=task_c.id),
+        ]
+
+        schedule = calculator.calculate_schedule(
+            tasks=[task_a, task_b, task_c],
+            dependencies=dependencies,
+            project_start_date=start_date,
+        )
+
+        # All tasks should be on critical path with zero slack
+        assert schedule.task_schedules[task_a.id].slack_days == 0
+        assert schedule.task_schedules[task_b.id].slack_days == 0
+        assert schedule.task_schedules[task_c.id].slack_days == 0
+        assert schedule.task_schedules[task_a.id].is_on_critical_path
+        assert schedule.task_schedules[task_b.id].is_on_critical_path
+        assert schedule.task_schedules[task_c.id].is_on_critical_path
+
+    def test_critical_path_with_diamond_dependency(
+        self, calculator, project_id, start_date
+    ):
+        """Should handle diamond dependency pattern correctly."""
+        # Diamond pattern:
+        #     B (2 days)
+        #   /          \
+        # A              D
+        #   \          /
+        #     C (4 days)
+        # Path A->C->D is critical (longer)
+        task_a = Task(project_id=project_id, title="Task A", difficulty_points=2)
+        task_b = Task(
+            project_id=project_id, title="Task B", difficulty_points=4
+        )  # 2 days
+        task_c = Task(
+            project_id=project_id, title="Task C", difficulty_points=8
+        )  # 4 days
+        task_d = Task(project_id=project_id, title="Task D", difficulty_points=2)
+
+        dependencies = [
+            TaskDependency(blocking_task_id=task_a.id, blocked_task_id=task_b.id),
+            TaskDependency(blocking_task_id=task_a.id, blocked_task_id=task_c.id),
+            TaskDependency(blocking_task_id=task_b.id, blocked_task_id=task_d.id),
+            TaskDependency(blocking_task_id=task_c.id, blocked_task_id=task_d.id),
+        ]
+
+        schedule = calculator.calculate_schedule(
+            tasks=[task_a, task_b, task_c, task_d],
+            dependencies=dependencies,
+            project_start_date=start_date,
+        )
+
+        # A, C, D should be on critical path
+        assert schedule.task_schedules[task_a.id].is_on_critical_path
+        assert schedule.task_schedules[task_c.id].is_on_critical_path
+        assert schedule.task_schedules[task_d.id].is_on_critical_path
+        # B should have slack
+        assert schedule.task_schedules[task_b.id].slack_days > 0
 
 
 class TestScheduleCalculatorRecalculateFromDelay:

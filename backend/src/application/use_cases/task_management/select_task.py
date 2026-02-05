@@ -146,7 +146,9 @@ class SelectTaskUseCase:
         if rule_id == "BR-PROJ-002":
             raise ManagerRequiredError("Managers cannot select tasks (BR-PROJ-002)")
         elif rule_id == "BR-ASSIGN-003":
-            raise WorkloadExceededError(0)  # Ratio is in the message
+            # Extract ratio from violation message (format: "... (current ratio: X.XX).")
+            ratio = self._extract_ratio_from_message(violation.message)
+            raise WorkloadExceededError(ratio)
         elif rule_id in (
             "BR-TASK-004",
             "BR-TASK-003",
@@ -157,3 +159,12 @@ class SelectTaskUseCase:
             raise TaskNotSelectableError(str(input.task_id), violation.message)
         else:
             raise TaskNotSelectableError(str(input.task_id), violation.message)
+
+    def _extract_ratio_from_message(self, message: str) -> float:
+        """Extract workload ratio from violation message."""
+        import re
+
+        match = re.search(r"current ratio: (\d+\.?\d*)", message)
+        if match:
+            return float(match.group(1))
+        return 0.0

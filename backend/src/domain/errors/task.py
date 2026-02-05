@@ -67,3 +67,14 @@ class CircularDependencyError(TaskError):
             f"Adding dependency from {blocking_task_id} to {blocked_task_id} would create a cycle",
             status=400,
         )
+
+
+class ScheduleUpdateError(TaskError):
+    """Raised when a schedule update violates business rules."""
+
+    def __init__(self, task_id: str, reason: str):
+        super().__init__(
+            f"Cannot update schedule for task {task_id}: {reason}",
+            status=400,
+            rule_id="BR-SCHED-005",
+        )

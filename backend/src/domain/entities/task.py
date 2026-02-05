@@ -9,12 +9,13 @@ from uuid import UUID, uuid4
 class TaskStatus(str, Enum):
     """
     Task status values as defined in BR-TASK-003.
-    
+
     Valid transitions:
     - Todo → Doing, Blocked, Cancelled
     - Doing → Done, Blocked, Todo (abandonment)
     - Blocked → Todo (unblocked)
     """
+
     TODO = "Todo"
     DOING = "Doing"
     BLOCKED = "Blocked"
@@ -36,12 +37,13 @@ VALID_STATUS_TRANSITIONS: dict[TaskStatus, set[TaskStatus]] = {
 class Task:
     """
     A unit of work with a difficulty score and status.
-    
+
     BR-TASK-001: Only the Manager can create, edit, or delete Tasks.
     BR-TASK-002: A Task must have a numeric Difficulty (Story Points).
     BR-TASK-003: Task Status Transitions are strict.
     BR-TASK-004: A Task cannot be selected (Doing) if Difficulty is not set.
     """
+
     project_id: UUID
     title: str
     id: UUID = field(default_factory=uuid4)
@@ -86,7 +88,7 @@ class Task:
     def transition_to(self, new_status: TaskStatus) -> None:
         """
         Transition task to a new status.
-        
+
         Raises:
             ValueError: If transition is not valid.
         """
@@ -96,7 +98,7 @@ class Task:
             )
         self.status = new_status
         self._update_timestamp()
-        
+
         if new_status == TaskStatus.DONE:
             self.actual_end_date = datetime.now(timezone.utc)
             self.progress_percent = 100
@@ -104,37 +106,34 @@ class Task:
     def can_be_selected(self) -> bool:
         """
         Check if task can be selected for work.
-        
+
         BR-TASK-004: Task cannot be selected if Difficulty is not set.
         """
-        return (
-            self.status == TaskStatus.TODO
-            and self.difficulty_points is not None
-        )
+        return self.status == TaskStatus.TODO and self.difficulty_points is not None
 
     def select(self, assignee_id: UUID) -> None:
         """
         Select the task for work (assign to an employee).
-        
+
         BR-TASK-004: Cannot select if difficulty is not set.
         """
         if not self.can_be_selected():
             if self.difficulty_points is None:
                 raise ValueError("Cannot select task without difficulty points set")
             raise ValueError(f"Cannot select task with status {self.status.value}")
-        
+
         self.transition_to(TaskStatus.DOING)
         self.assignee_id = assignee_id
 
     def abandon(self) -> None:
         """
         Abandon the task (BR-ABANDON).
-        
+
         The task returns to Todo status and is unassigned.
         """
         if self.status != TaskStatus.DOING:
             raise ValueError("Can only abandon tasks that are in progress")
-        
+
         self.transition_to(TaskStatus.TODO)
         self.assignee_id = None
 
@@ -183,19 +182,27 @@ class Task:
     ) -> None:
         """
         Update task schedule dates.
-        
+
         BR-SCHED-005: If task has started, only End Date can change.
+
+        Raises:
+            ScheduleUpdateError: If trying to change start date of in-progress task.
         """
+        from backend.src.domain.errors import ScheduleUpdateError
+
         if self.status == TaskStatus.DOING and expected_start_date is not None:
             # BR-SCHED-005: Cannot change start date of in-progress task
-            pass
-        else:
-            if expected_start_date is not None:
-                self.expected_start_date = expected_start_date
-        
+            raise ScheduleUpdateError(
+                str(self.id),
+                "cannot change start date of in-progress task",
+            )
+
+        if expected_start_date is not None:
+            self.expected_start_date = expected_start_date
+
         if expected_end_date is not None:
             self.expected_end_date = expected_end_date
-        
+
         self._update_timestamp()
 
     @property

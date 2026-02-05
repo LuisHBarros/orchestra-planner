@@ -4,6 +4,7 @@ This service calculates task schedules based on dependencies, applying
 topological sorting to determine execution order and critical path analysis.
 """
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -67,6 +68,7 @@ class ScheduleCalculator:
         Estimate task duration in working days based on difficulty and seniority.
 
         Higher seniority = faster completion.
+        Uses ceiling to avoid underestimating task duration.
         """
         if difficulty_points is None or difficulty_points <= 0:
             return 1  # Minimum 1 day
@@ -75,19 +77,33 @@ class ScheduleCalculator:
         if effective_rate <= 0:
             return 1
 
-        days = int((Decimal(difficulty_points) / effective_rate).to_integral_value())
+        # Use ceiling to avoid underestimating task duration
+        days = math.ceil(float(Decimal(difficulty_points) / effective_rate))
         return max(1, days)
 
     def _add_working_days(self, start_date: datetime, working_days: int) -> datetime:
-        """Add working days to a date, skipping weekends."""
+        """Add (or subtract) working days to/from a date, skipping weekends."""
         current = start_date
-        days_added = 0
 
-        while days_added < working_days:
-            current += timedelta(days=1)
-            # Skip weekends (Saturday=5, Sunday=6)
-            if current.weekday() < self.working_days_per_week:
-                days_added += 1
+        if working_days == 0:
+            return current
+
+        if working_days > 0:
+            days_added = 0
+            while days_added < working_days:
+                current += timedelta(days=1)
+                # Skip weekends (Saturday=5, Sunday=6)
+                if current.weekday() < self.working_days_per_week:
+                    days_added += 1
+        else:
+            # Handle negative working days (backward pass)
+            days_subtracted = 0
+            target = abs(working_days)
+            while days_subtracted < target:
+                current -= timedelta(days=1)
+                # Skip weekends (Saturday=5, Sunday=6)
+                if current.weekday() < self.working_days_per_week:
+                    days_subtracted += 1
 
         return current
 
