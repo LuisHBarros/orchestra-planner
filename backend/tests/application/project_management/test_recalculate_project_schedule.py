@@ -27,23 +27,15 @@ from backend.src.domain.services.schedule_calculator import (
 
 
 @pytest.fixture
-def task_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def task_dependency_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def project_member_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def project_repository():
-    return AsyncMock()
+def uow():
+    mock = AsyncMock()
+    mock.project_repository = AsyncMock()
+    mock.project_member_repository = AsyncMock()
+    mock.task_repository = AsyncMock()
+    mock.task_dependency_repository = AsyncMock()
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
+    return mock
 
 
 @pytest.fixture
@@ -53,17 +45,11 @@ def schedule_calculator():
 
 @pytest.fixture
 def use_case(
-    project_repository,
-    task_repository,
-    task_dependency_repository,
-    project_member_repository,
+    uow,
     schedule_calculator,
 ):
     return RecalculateProjectScheduleUseCase(
-        project_repository=project_repository,
-        task_repository=task_repository,
-        task_dependency_repository=task_dependency_repository,
-        project_member_repository=project_member_repository,
+        uow=uow,
         schedule_calculator=schedule_calculator,
     )
 
@@ -163,10 +149,7 @@ class TestRecalculateProjectScheduleUseCase:
     async def test_returns_schedule_and_persists_task_dates_via_save_many(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_dependency_repository,
-        project_member_repository,
+        uow,
         schedule_calculator,
         project_id,
         task_a,
@@ -178,32 +161,33 @@ class TestRecalculateProjectScheduleUseCase:
     ):
         """Recalculates schedule and batch-saves updated task dates."""
         tasks = [task_a, task_b]
-        task_repository.find_by_project.return_value = tasks
-        task_dependency_repository.find_by_project.return_value = [dep]
-        project_member_repository.find_by_project.return_value = [member]
-        project_repository.find_by_id.return_value = project
+        uow.task_repository.find_by_project.return_value = tasks
+        uow.task_dependency_repository.find_by_project.return_value = [dep]
+        uow.project_member_repository.find_by_project.return_value = [member]
+        uow.project_repository.find_by_id.return_value = project
         schedule_calculator.calculate_schedule.return_value = expected_schedule
-        task_repository.save_many.side_effect = lambda ts: ts
+        uow.task_repository.save_many.side_effect = lambda ts: ts
 
         input_data = RecalculateProjectScheduleInput(project_id=project_id)
         result = await use_case.execute(input_data)
 
         assert result == expected_schedule
-        task_repository.find_by_project.assert_called_once_with(project_id)
-        task_dependency_repository.find_by_project.assert_called_once_with(
+        uow.task_repository.find_by_project.assert_called_once_with(project_id)
+        uow.task_dependency_repository.find_by_project.assert_called_once_with(
             project_id
         )
-        project_member_repository.find_by_project.assert_called_once_with(
+        uow.project_member_repository.find_by_project.assert_called_once_with(
             project_id
         )
-        project_repository.find_by_id.assert_awaited_once_with(project_id)
+        uow.project_repository.find_by_id.assert_awaited_once_with(project_id)
         schedule_calculator.calculate_schedule.assert_called_once()
         call_kwargs = schedule_calculator.calculate_schedule.call_args[1]
         assert call_kwargs["tasks"] == tasks
         assert call_kwargs["dependencies"] == [dep]
         assert call_kwargs["working_calendar"] is not None
         assert call_kwargs["working_calendar"].timezone == "UTC"
-        task_repository.save_many.assert_awaited_once_with(tasks)
+        uow.task_repository.save_many.assert_awaited_once_with(tasks)
+        uow.commit.assert_awaited_once()
 
         # Task dates updated from schedule
         assert (
@@ -227,10 +211,7 @@ class TestRecalculateProjectScheduleUseCase:
     async def test_uses_default_seniority_for_unassigned_tasks(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_dependency_repository,
-        project_member_repository,
+        uow,
         schedule_calculator,
         project_id,
         task_a,
@@ -238,12 +219,12 @@ class TestRecalculateProjectScheduleUseCase:
         project,
     ):
         """Unassigned tasks use default_seniority from input."""
-        task_repository.find_by_project.return_value = [task_a]
-        task_dependency_repository.find_by_project.return_value = []
-        project_member_repository.find_by_project.return_value = []
-        project_repository.find_by_id.return_value = project
+        uow.task_repository.find_by_project.return_value = [task_a]
+        uow.task_dependency_repository.find_by_project.return_value = []
+        uow.project_member_repository.find_by_project.return_value = []
+        uow.project_repository.find_by_id.return_value = project
         schedule_calculator.calculate_schedule.return_value = expected_schedule
-        task_repository.save_many.side_effect = lambda ts: ts
+        uow.task_repository.save_many.side_effect = lambda ts: ts
 
         input_data = RecalculateProjectScheduleInput(
             project_id=project_id,
@@ -261,10 +242,7 @@ class TestRecalculateProjectScheduleUseCase:
     async def test_uses_member_seniority_for_assigned_tasks(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_dependency_repository,
-        project_member_repository,
+        uow,
         schedule_calculator,
         project_id,
         task_b,
@@ -273,12 +251,12 @@ class TestRecalculateProjectScheduleUseCase:
         project,
     ):
         """Assigned tasks use their assignee's seniority from project members."""
-        task_repository.find_by_project.return_value = [task_b]
-        task_dependency_repository.find_by_project.return_value = []
-        project_member_repository.find_by_project.return_value = [member]
-        project_repository.find_by_id.return_value = project
+        uow.task_repository.find_by_project.return_value = [task_b]
+        uow.task_dependency_repository.find_by_project.return_value = []
+        uow.project_member_repository.find_by_project.return_value = [member]
+        uow.project_repository.find_by_id.return_value = project
         schedule_calculator.calculate_schedule.return_value = expected_schedule
-        task_repository.save_many.side_effect = lambda ts: ts
+        uow.task_repository.save_many.side_effect = lambda ts: ts
 
         input_data = RecalculateProjectScheduleInput(project_id=project_id)
         await use_case.execute(input_data)
@@ -293,19 +271,16 @@ class TestRecalculateProjectScheduleUseCase:
     async def test_empty_project_returns_empty_schedule_no_save_many(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_dependency_repository,
-        project_member_repository,
+        uow,
         schedule_calculator,
         project_id,
     ):
         """No tasks yields empty schedule and save_many is not called."""
         empty_schedule = ProjectSchedule()
-        task_repository.find_by_project.return_value = []
-        task_dependency_repository.find_by_project.return_value = []
-        project_member_repository.find_by_project.return_value = []
-        project_repository.find_by_id.return_value = None
+        uow.task_repository.find_by_project.return_value = []
+        uow.task_dependency_repository.find_by_project.return_value = []
+        uow.project_member_repository.find_by_project.return_value = []
+        uow.project_repository.find_by_id.return_value = None
         schedule_calculator.calculate_schedule.return_value = empty_schedule
 
         input_data = RecalculateProjectScheduleInput(project_id=project_id)
@@ -314,4 +289,5 @@ class TestRecalculateProjectScheduleUseCase:
         assert result == empty_schedule
         call_kwargs = schedule_calculator.calculate_schedule.call_args[1]
         assert call_kwargs["working_calendar"] is None
-        task_repository.save_many.assert_not_awaited()
+        uow.task_repository.save_many.assert_not_awaited()
+        uow.commit.assert_not_awaited()
