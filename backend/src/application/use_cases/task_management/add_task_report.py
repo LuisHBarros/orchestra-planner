@@ -13,6 +13,7 @@ from backend.src.domain.ports.repositories import (
     TaskLogRepository,
     TaskRepository,
 )
+from backend.src.domain.ports.unit_of_work import UnitOfWork
 
 
 @dataclass
@@ -39,10 +40,12 @@ class AddTaskReportUseCase:
 
     def __init__(
         self,
-        project_member_repository: ProjectMemberRepository,
-        task_repository: TaskRepository,
-        task_log_repository: TaskLogRepository,
+        uow: UnitOfWork | None = None,
+        project_member_repository: ProjectMemberRepository | None = None,
+        task_repository: TaskRepository | None = None,
+        task_log_repository: TaskLogRepository | None = None,
     ):
+        self.uow = uow
         self.project_member_repository = project_member_repository
         self.task_repository = task_repository
         self.task_log_repository = task_log_repository
@@ -67,29 +70,61 @@ class AddTaskReportUseCase:
             raise ValueError("Report text cannot be empty")
 
         # Find the task
+        if self.uow is not None:
+            async with self.uow:
+                task = await self.uow.task_repository.find_by_id(input.task_id)
+                if task is None:
+                    raise TaskNotFoundError(str(input.task_id))
+
+                # Verify task is in Doing status
+                if task.status != TaskStatus.DOING:
+                    raise ValueError(
+                        f"Cannot add report to task with status {task.status.value}. "
+                        "Task must be in Doing status."
+                    )
+
+                # Verify task has an assignee
+                if task.assignee_id is None:
+                    raise TaskNotOwnedError(str(input.task_id), str(input.user_id))
+
+                # Find the member and verify ownership
+                member = await self.uow.project_member_repository.find_by_project_and_user(
+                    task.project_id, input.user_id
+                )
+                if member is None or member.id != task.assignee_id:
+                    raise TaskNotOwnedError(str(input.task_id), str(input.user_id))
+
+                # Create the report log entry
+                log = TaskLog.create_report_log(
+                    task_id=task.id,
+                    author_id=member.id,
+                    report_text=input.report_text.strip(),
+                )
+                await self.uow.task_log_repository.save(log)
+                await self.uow.commit()
+            return log
+
+        if (
+            self.project_member_repository is None
+            or self.task_repository is None
+            or self.task_log_repository is None
+        ):
+            raise RuntimeError("AddTaskReportUseCase requires uow or repositories")
         task = await self.task_repository.find_by_id(input.task_id)
         if task is None:
             raise TaskNotFoundError(str(input.task_id))
-
-        # Verify task is in Doing status
         if task.status != TaskStatus.DOING:
             raise ValueError(
                 f"Cannot add report to task with status {task.status.value}. "
                 "Task must be in Doing status."
             )
-
-        # Verify task has an assignee
         if task.assignee_id is None:
             raise TaskNotOwnedError(str(input.task_id), str(input.user_id))
-
-        # Find the member and verify ownership
         member = await self.project_member_repository.find_by_project_and_user(
             task.project_id, input.user_id
         )
         if member is None or member.id != task.assignee_id:
             raise TaskNotOwnedError(str(input.task_id), str(input.user_id))
-
-        # Create the report log entry
         log = TaskLog.create_report_log(
             task_id=task.id,
             author_id=member.id,

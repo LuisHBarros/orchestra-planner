@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from backend.src.application.use_cases.task_management import (
@@ -19,7 +19,7 @@ from backend.src.application.use_cases.task_management import (
     RemoveFromTaskInput,
     SelectTaskInput,
 )
-from backend.src.domain.entities import Task, TaskLog, TaskStatus
+from backend.src.domain.entities import Task, TaskLog
 from backend.src.adapters.api.routers.common import get_container, get_current_user_id
 from backend.src.infrastructure.di import Container
 
@@ -129,34 +129,52 @@ class ErrorResponse(BaseModel):
     rule_id: str | None = None
 
 
-# --- Helpers ---
-
-
-async def validate_task_belongs_to_project(
-    container: Container,
-    task_id: UUID,
-    project_id: UUID,
-) -> Task:
-    """
-    Validate that a task exists and belongs to the specified project.
-
-    Returns the task if valid, raises HTTPException otherwise.
-    """
-    task = await container.repositories.task.find_by_id(task_id)
-    if task is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found",
-        )
-    if task.project_id != project_id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found in project {project_id}",
-        )
-    return task
+class PaginatedTasksResponse(BaseModel):
+    items: list[TaskResponse]
+    total: int
+    limit: int
+    offset: int
 
 
 # --- Endpoints ---
+
+
+@router.get("", response_model=PaginatedTasksResponse)
+async def list_tasks(
+    project_id: UUID,
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    container: Annotated[Container, Depends(get_container)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+) -> PaginatedTasksResponse:
+    async with container.uow:
+        project = await container.uow.project_repository.find_by_id(project_id)
+        if project is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {project_id} not found",
+            )
+
+        member = await container.uow.project_member_repository.find_by_project_and_user(
+            project_id, user_id
+        )
+        if member is None and not project.is_manager(user_id):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Project access denied",
+            )
+
+        items = await container.uow.task_repository.list_by_project(
+            project_id, limit=limit, offset=offset
+        )
+        total = await container.uow.task_repository.count_by_project(project_id)
+
+    return PaginatedTasksResponse(
+        items=[TaskResponse.from_entity(task) for task in items],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post(
@@ -249,9 +267,6 @@ async def complete_task(
     Only the assigned user can complete their task.
     Task must be in Doing status.
     """
-    # Validate task belongs to project
-    await validate_task_belongs_to_project(container, task_id, project_id)
-
     use_case = container.complete_task_use_case()
 
     task = await use_case.execute(
@@ -285,9 +300,6 @@ async def abandon_task(
     BR-ABANDON-002: Reason is required.
     Task returns to Todo status and becomes unassigned.
     """
-    # Validate task belongs to project
-    await validate_task_belongs_to_project(container, task_id, project_id)
-
     use_case = container.abandon_task_use_case()
 
     task = await use_case.execute(
@@ -323,9 +335,6 @@ async def add_task_report(
     UC-042: Only the assigned employee can add reports.
     Task must be in Doing status.
     """
-    # Validate task belongs to project
-    await validate_task_belongs_to_project(container, task_id, project_id)
-
     use_case = container.add_task_report_use_case()
 
     log = await use_case.execute(
@@ -359,9 +368,6 @@ async def remove_from_task(
 
     UC-050: Task returns to Todo status.
     """
-    # Validate task belongs to project
-    await validate_task_belongs_to_project(container, task_id, project_id)
-
     use_case = container.remove_from_task_use_case()
 
     task = await use_case.execute(

@@ -4,6 +4,7 @@ from uuid import uuid4
 
 import pytest
 
+from backend.src.adapters.services.basic_services import InMemoryRevokedTokenStore
 from backend.src.adapters.services.jwt_token_service import JWTTokenService
 from backend.src.config.settings import AppSettings
 
@@ -23,7 +24,7 @@ def settings():
 
 @pytest.mark.asyncio
 async def test_generate_and_verify_access_token(settings):
-    service = JWTTokenService(settings)
+    service = JWTTokenService(settings, revoked_token_store=InMemoryRevokedTokenStore())
     user_id = uuid4()
 
     pair = await service.generate_tokens(user_id)
@@ -35,7 +36,7 @@ async def test_generate_and_verify_access_token(settings):
 
 @pytest.mark.asyncio
 async def test_refresh_rotates_tokens(settings):
-    service = JWTTokenService(settings)
+    service = JWTTokenService(settings, revoked_token_store=InMemoryRevokedTokenStore())
     pair = await service.generate_tokens(uuid4())
 
     refreshed = await service.refresh_token(pair.refresh_token)
@@ -47,7 +48,7 @@ async def test_refresh_rotates_tokens(settings):
 
 @pytest.mark.asyncio
 async def test_revoke_invalidates_token(settings):
-    service = JWTTokenService(settings)
+    service = JWTTokenService(settings, revoked_token_store=InMemoryRevokedTokenStore())
     pair = await service.generate_tokens(uuid4())
 
     await service.revoke_token(pair.access_token)

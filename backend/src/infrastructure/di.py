@@ -120,14 +120,14 @@ class Container:
     def request_magic_link_use_case(self) -> RequestMagicLinkUseCase:
         """Create RequestMagicLinkUseCase with dependencies."""
         return RequestMagicLinkUseCase(
-            user_repository=self.repositories.user,
+            uow=self.uow,
             email_service=self.services.email,
         )
 
     def verify_magic_link_use_case(self) -> VerifyMagicLinkUseCase:
         """Create VerifyMagicLinkUseCase with dependencies."""
         return VerifyMagicLinkUseCase(
-            user_repository=self.repositories.user,
+            uow=self.uow,
             token_service=self.services.token,
         )
 
@@ -135,39 +135,29 @@ class Container:
 
     def create_project_use_case(self) -> CreateProjectUseCase:
         """Create CreateProjectUseCase with dependencies."""
-        return CreateProjectUseCase(
-            user_repository=self.repositories.user,
-            project_repository=self.repositories.project,
-        )
+        return CreateProjectUseCase(uow=self.uow)
 
     def configure_project_llm_use_case(self) -> ConfigureProjectLLMUseCase:
         """Create ConfigureProjectLLMUseCase with dependencies."""
         return ConfigureProjectLLMUseCase(
-            project_repository=self.repositories.project,
+            uow=self.uow,
             encryption_service=self.services.encryption,
         )
 
     def configure_calendar_use_case(self) -> ConfigureCalendarUseCase:
         """Create ConfigureCalendarUseCase with dependencies."""
         return ConfigureCalendarUseCase(
-            project_repository=self.repositories.project,
-            calendar_repository=self.repositories.calendar,
+            uow=self.uow,
             recalculate_schedule_use_case=self.recalculate_project_schedule_use_case(),
         )
 
     def create_role_use_case(self) -> CreateRoleUseCase:
         """Create CreateRoleUseCase with dependencies."""
-        return CreateRoleUseCase(
-            project_repository=self.repositories.project,
-            role_repository=self.repositories.role,
-        )
+        return CreateRoleUseCase(uow=self.uow)
 
     def get_project_details_use_case(self) -> GetProjectDetailsUseCase:
         """Create GetProjectDetailsUseCase with dependencies."""
-        return GetProjectDetailsUseCase(
-            project_repository=self.repositories.project,
-            project_member_repository=self.repositories.project_member,
-        )
+        return GetProjectDetailsUseCase(uow=self.uow)
 
     def fire_employee_use_case(self) -> FireEmployeeUseCase:
         """Create FireEmployeeUseCase with dependencies."""
@@ -191,9 +181,7 @@ class Container:
     def create_invite_use_case(self) -> CreateInviteUseCase:
         """Create CreateInviteUseCase with dependencies."""
         return CreateInviteUseCase(
-            project_repository=self.repositories.project,
-            role_repository=self.repositories.role,
-            project_invite_repository=self.repositories.project_invite,
+            uow=self.uow,
             base_url=self.public_base_url,
         )
 
@@ -205,10 +193,7 @@ class Container:
 
     def create_task_use_case(self) -> CreateTaskUseCase:
         """Create CreateTaskUseCase with dependencies."""
-        return CreateTaskUseCase(
-            project_repository=self.repositories.project,
-            task_repository=self.repositories.task,
-        )
+        return CreateTaskUseCase(uow=self.uow)
 
     def cancel_task_use_case(self) -> CancelTaskUseCase:
         """Create CancelTaskUseCase with dependencies."""
@@ -256,11 +241,7 @@ class Container:
 
     def add_task_report_use_case(self) -> AddTaskReportUseCase:
         """Create AddTaskReportUseCase with dependencies."""
-        return AddTaskReportUseCase(
-            project_member_repository=self.repositories.project_member,
-            task_repository=self.repositories.task,
-            task_log_repository=self.repositories.task_log,
-        )
+        return AddTaskReportUseCase(uow=self.uow)
 
     def remove_from_task_use_case(self) -> RemoveFromTaskUseCase:
         """Create RemoveFromTaskUseCase with dependencies."""
@@ -355,7 +336,7 @@ class ContainerFactory:
             notification=self._notification_service,
         )
 
-        uow = SqlAlchemyUnitOfWork(self._session_factory)
+        uow = SqlAlchemyUnitOfWork(session)
 
         return Container(
             repositories=repositories,

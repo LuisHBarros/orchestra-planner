@@ -27,10 +27,11 @@ async def test_estimate_difficulty_parses_json(monkeypatch, settings):
         ]
     )
 
+    async def fake_create(**kwargs):
+        return fake_response
+
     fake_client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=lambda **kwargs: fake_response)
-        )
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create))
     )
     monkeypatch.setattr(service, "_client", lambda: fake_client)
 
@@ -54,10 +55,11 @@ async def test_estimate_progress_parses_json(monkeypatch, settings):
         ]
     )
 
+    async def fake_create(**kwargs):
+        return fake_response
+
     fake_client = SimpleNamespace(
-        chat=SimpleNamespace(
-            completions=SimpleNamespace(create=lambda **kwargs: fake_response)
-        )
+        chat=SimpleNamespace(completions=SimpleNamespace(create=fake_create))
     )
     monkeypatch.setattr(service, "_client", lambda: fake_client)
 

@@ -63,6 +63,6 @@ async def e2e_client(test_database_url: str, monkeypatch):
             transport=transport, base_url="http://testserver"
         ) as client:
             yield client
-    from backend.src.infrastructure.db.session import engine
+    from backend.src.infrastructure.db.session import dispose_db
 
-    await engine.dispose()
+    await dispose_db()

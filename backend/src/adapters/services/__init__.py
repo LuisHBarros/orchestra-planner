@@ -1,6 +1,8 @@
 """Service adapters for local development."""
 
 from backend.src.adapters.services.basic_services import (
+    InMemoryRateLimiter,
+    InMemoryRevokedTokenStore,
     InMemoryTokenService,
     MockEmailService,
     MockLLMService,
@@ -21,6 +23,8 @@ __all__ = [
     "EmailNotificationService",
     "FernetEncryptionService",
     "InMemoryTokenService",
+    "InMemoryRevokedTokenStore",
+    "InMemoryRateLimiter",
     "JWTTokenService",
     "MockEmailService",
     "MockLLMService",

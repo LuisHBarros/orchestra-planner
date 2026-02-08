@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from backend.src.domain.ports.repositories import (
+    CalendarRepository,
     ProjectInviteRepository,
     ProjectMemberRepository,
     ProjectRepository,
@@ -33,6 +34,7 @@ class UnitOfWork(Protocol):
 
     user_repository: UserRepository
     project_repository: ProjectRepository
+    calendar_repository: CalendarRepository
     project_member_repository: ProjectMemberRepository
     project_invite_repository: ProjectInviteRepository
     role_repository: RoleRepository

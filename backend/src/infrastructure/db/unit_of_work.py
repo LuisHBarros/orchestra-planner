@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 class SqlAlchemyUnitOfWork:
@@ -15,11 +15,10 @@ class SqlAlchemyUnitOfWork:
     same transactional session.
     """
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
-        self._session_factory = session_factory
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
     async def __aenter__(self) -> SqlAlchemyUnitOfWork:
-        self._session = self._session_factory()
         await self._session.begin()
 
         # Deferred imports to avoid circular dependencies and because
@@ -29,6 +28,7 @@ class SqlAlchemyUnitOfWork:
             PostgresProjectMemberRepository,
             PostgresProjectRepository,
             PostgresRoleRepository,
+            PostgresCalendarRepository,
             PostgresTaskDependencyRepository,
             PostgresTaskLogRepository,
             PostgresTaskRepository,
@@ -37,6 +37,7 @@ class SqlAlchemyUnitOfWork:
 
         self.user_repository = PostgresUserRepository(self._session)
         self.project_repository = PostgresProjectRepository(self._session)
+        self.calendar_repository = PostgresCalendarRepository(self._session)
         self.project_member_repository = PostgresProjectMemberRepository(self._session)
         self.project_invite_repository = PostgresProjectInviteRepository(self._session)
         self.role_repository = PostgresRoleRepository(self._session)
@@ -64,4 +65,3 @@ class SqlAlchemyUnitOfWork:
     ) -> None:
         if exc_type is not None:
             await self.rollback()
-        await self._session.close()

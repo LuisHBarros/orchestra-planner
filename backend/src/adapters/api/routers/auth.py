@@ -3,7 +3,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 
 from backend.src.adapters.api.routers.common import get_container
@@ -48,21 +48,60 @@ class RefreshTokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "Bearer"
 
+async def _apply_rate_limit(
+    request: Request,
+    bucket: str,
+    limit: int,
+    window_seconds: int,
+) -> None:
+    limiter = deps.get_rate_limiter()
+    if limiter is None:
+        return
+    client_ip = request.client.host if request.client else "unknown"
+    result = await limiter.hit(
+        key=f"{bucket}:{client_ip}",
+        limit=limit,
+        window_seconds=window_seconds,
+    )
+    if not result.allowed:
+        retry_after = result.retry_after_seconds or window_seconds
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Rate limit exceeded",
+            headers={"Retry-After": str(retry_after)},
+        )
+
 
 @router.post("/magic-link", status_code=status.HTTP_204_NO_CONTENT)
 async def request_magic_link(
+    req: Request,
     request: MagicLinkRequest,
     container: Annotated[Container, Depends(get_container)],
 ) -> None:
+    settings = get_settings()
+    await _apply_rate_limit(
+        request=req,
+        bucket=f"auth:magic-link:{request.email.strip().lower()}",
+        limit=settings.auth_magic_link_limit,
+        window_seconds=settings.auth_magic_link_window_seconds,
+    )
     use_case = container.request_magic_link_use_case()
     await use_case.execute(RequestMagicLinkInput(email=request.email))
 
 
 @router.post("/verify", response_model=VerifyMagicLinkResponse)
 async def verify_magic_link(
+    req: Request,
     request: VerifyMagicLinkRequest,
     container: Annotated[Container, Depends(get_container)],
 ) -> VerifyMagicLinkResponse:
+    settings = get_settings()
+    await _apply_rate_limit(
+        request=req,
+        bucket="auth:verify",
+        limit=settings.auth_verify_limit,
+        window_seconds=settings.auth_verify_window_seconds,
+    )
     use_case = container.verify_magic_link_use_case()
     result = await use_case.execute(request.token)
     return VerifyMagicLinkResponse(
@@ -76,9 +115,17 @@ async def verify_magic_link(
 
 @router.post("/refresh", response_model=RefreshTokenResponse)
 async def refresh_token(
+    req: Request,
     request: RefreshTokenRequest,
     container: Annotated[Container, Depends(get_container)],
 ) -> RefreshTokenResponse:
+    settings = get_settings()
+    await _apply_rate_limit(
+        request=req,
+        bucket="auth:refresh",
+        limit=settings.auth_refresh_limit,
+        window_seconds=settings.auth_refresh_window_seconds,
+    )
     tokens = await container.services.token.refresh_token(request.refresh_token)
     if tokens is None:
         raise HTTPException(
@@ -94,9 +141,17 @@ async def refresh_token(
 
 @router.post("/revoke", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_token(
+    req: Request,
     request: RefreshTokenRequest,
     container: Annotated[Container, Depends(get_container)],
 ) -> None:
+    settings = get_settings()
+    await _apply_rate_limit(
+        request=req,
+        bucket="auth:revoke",
+        limit=settings.auth_revoke_limit,
+        window_seconds=settings.auth_revoke_window_seconds,
+    )
     await container.services.token.revoke_token(request.refresh_token)
 
 

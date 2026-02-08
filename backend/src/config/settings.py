@@ -16,12 +16,15 @@ class AppSettings(BaseSettings):
 
     public_base_url: str = "http://localhost:8000"
     log_level: str = "INFO"
+    database_url: str | None = None
+    db_echo: bool = False
 
     email_provider: str = "mock"
     llm_provider: str = "mock"
     token_provider: str = "mock"
     encryption_provider: str = "mock"
     notification_provider: str = "mock"
+    rate_limit_provider: str = "memory"
 
     global_llm_api_key: str | None = None
     global_llm_base_url: str | None = None
@@ -40,6 +43,21 @@ class AppSettings(BaseSettings):
     smtp_use_tls: bool = True
 
     encryption_key: str | None = None
+    redis_url: str | None = None
+
+    cors_allow_origins: list[str] = ["http://localhost:5173", "http://localhost:3000"]
+    cors_allow_methods: list[str] = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    cors_allow_headers: list[str] = ["*"]
+    cors_allow_credentials: bool = True
+
+    auth_magic_link_limit: int = 5
+    auth_magic_link_window_seconds: int = 300
+    auth_verify_limit: int = 20
+    auth_verify_window_seconds: int = 300
+    auth_refresh_limit: int = 30
+    auth_refresh_window_seconds: int = 300
+    auth_revoke_limit: int = 30
+    auth_revoke_window_seconds: int = 300
 
 
 @lru_cache(maxsize=1)

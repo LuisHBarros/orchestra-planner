@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -20,6 +21,7 @@ from backend.src.adapters.api.routers import (
 from backend.src.adapters.services import (
     EmailNotificationService,
     FernetEncryptionService,
+    InMemoryRateLimiter,
     InMemoryTokenService,
     JWTTokenService,
     MockEmailService,
@@ -44,8 +46,30 @@ from backend.src.domain.errors import (
 )
 from backend.src.domain.services.time_provider import SystemTimeProvider
 from backend.src.domain.time import reset_time_provider, set_time_provider
-from backend.src.infrastructure.db.session import AsyncSessionLocal
+from backend.src.infrastructure.db.session import (
+    dispose_db,
+    get_session_factory,
+    init_db,
+)
 from backend.src.infrastructure.di import ContainerFactory
+
+
+def _validate_settings(settings) -> None:
+    if not settings.database_url:
+        raise RuntimeError("DATABASE_URL is required")
+    if settings.token_provider != "mock" and not settings.jwt_secret_key:
+        raise RuntimeError("JWT_SECRET_KEY is required when TOKEN_PROVIDER != mock")
+    if settings.encryption_provider != "mock" and not settings.encryption_key:
+        raise RuntimeError("ENCRYPTION_KEY is required when ENCRYPTION_PROVIDER != mock")
+    if settings.llm_provider != "mock" and not settings.global_llm_api_key:
+        raise RuntimeError("GLOBAL_LLM_API_KEY is required when LLM_PROVIDER != mock")
+    if (
+        settings.token_provider != "mock"
+        or settings.rate_limit_provider == "redis"
+    ) and not settings.redis_url:
+        raise RuntimeError(
+            "REDIS_URL is required when TOKEN_PROVIDER != mock or RATE_LIMIT_PROVIDER=redis"
+        )
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
@@ -74,11 +98,15 @@ def _register_exception_handlers(app: FastAPI) -> None:
 
 
 def create_app() -> FastAPI:
+    settings = get_settings()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        settings = get_settings()
+        _validate_settings(settings)
+        init_db(settings)
         configure_logging(settings.log_level)
         time_token = set_time_provider(SystemTimeProvider())
+        redis = None
 
         if settings.email_provider == "mock":
             email_service = MockEmailService()
@@ -88,7 +116,14 @@ def create_app() -> FastAPI:
         if settings.token_provider == "mock":
             token_service = InMemoryTokenService()
         else:
-            token_service = JWTTokenService(settings)
+            from backend.src.infrastructure.cache import (
+                RedisRevokedTokenStore,
+                create_redis_client,
+            )
+
+            redis = create_redis_client(settings.redis_url or "")
+            revoked_store = RedisRevokedTokenStore(redis)
+            token_service = JWTTokenService(settings, revoked_token_store=revoked_store)
 
         if settings.encryption_provider == "mock":
             encryption_service = SimpleEncryptionService()
@@ -105,8 +140,17 @@ def create_app() -> FastAPI:
         else:
             notification_service = EmailNotificationService(email_service)
 
+        if settings.rate_limit_provider == "redis":
+            from backend.src.infrastructure.cache import RedisRateLimiter, create_redis_client
+
+            if redis is None:
+                redis = create_redis_client(settings.redis_url or "")
+            rate_limiter = RedisRateLimiter(redis)
+        else:
+            rate_limiter = InMemoryRateLimiter()
+
         factory = ContainerFactory(
-            session_factory=AsyncSessionLocal,
+            session_factory=get_session_factory(),
             email_service=email_service,
             token_service=token_service,
             encryption_service=encryption_service,
@@ -117,16 +161,28 @@ def create_app() -> FastAPI:
 
         deps.set_container_factory(factory)
         deps.set_current_user_provider(deps.JWTUserIdProvider(token_service))
+        deps.set_rate_limiter(rate_limiter)
 
         try:
             yield
         finally:
             reset_time_provider(time_token)
+            deps.set_rate_limiter(None)
+            if redis is not None:
+                await redis.aclose()
+            await dispose_db()
 
     app = FastAPI(lifespan=lifespan)
     from backend.src.adapters.api.middleware.request_id import RequestIdMiddleware
 
     app.add_middleware(RequestIdMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_allow_origins,
+        allow_methods=settings.cors_allow_methods,
+        allow_headers=settings.cors_allow_headers,
+        allow_credentials=settings.cors_allow_credentials,
+    )
 
     _register_exception_handlers(app)
 
@@ -142,7 +198,8 @@ def create_app() -> FastAPI:
         readiness = {"db": "ok"}
         status_code = status.HTTP_200_OK
         try:
-            async with AsyncSessionLocal() as session:
+            session_factory = get_session_factory()
+            async with session_factory() as session:
                 await session.execute(text("SELECT 1"))
         except Exception:
             readiness["db"] = "fail"

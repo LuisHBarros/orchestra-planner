@@ -23,13 +23,20 @@ class OpenAILLMService:
         self._api_key = settings.global_llm_api_key
         self._model = settings.llm_model or "gpt-4o-mini"
         self._base_url = settings.global_llm_base_url
+        self._client_instance = None
 
     def _client(self):
-        from openai import OpenAI
+        from openai import AsyncOpenAI
 
+        if self._client_instance is not None:
+            return self._client_instance
         if self._base_url:
-            return OpenAI(api_key=self._api_key, base_url=self._base_url)
-        return OpenAI(api_key=self._api_key)
+            self._client_instance = AsyncOpenAI(
+                api_key=self._api_key, base_url=self._base_url
+            )
+        else:
+            self._client_instance = AsyncOpenAI(api_key=self._api_key)
+        return self._client_instance
 
     async def estimate_difficulty(
         self,
@@ -85,7 +92,7 @@ class OpenAILLMService:
 
     async def _complete_json(self, payload: dict) -> dict:
         try:
-            response = self._client().chat.completions.create(
+            response = await self._client().chat.completions.create(
                 model=self._model,
                 messages=[
                     {

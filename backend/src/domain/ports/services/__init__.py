@@ -13,6 +13,8 @@ from backend.src.domain.ports.services.notification_service import (
     NotificationService,
     WorkloadAlertData,
 )
+from backend.src.domain.ports.services.rate_limiter import RateLimitResult, RateLimiter
+from backend.src.domain.ports.services.revoked_token_store import RevokedTokenStore
 from backend.src.domain.ports.services.token_service import TokenPair, TokenService
 from backend.src.domain.ports.services.time_provider import TimeProvider
 
@@ -30,4 +32,7 @@ __all__ = [
     "WorkloadAlertData",
     "NewTaskToastData",
     "TimeProvider",
+    "RevokedTokenStore",
+    "RateLimiter",
+    "RateLimitResult",
 ]

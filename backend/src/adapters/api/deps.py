@@ -7,7 +7,7 @@ from uuid import UUID
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from backend.src.domain.ports.services import TokenService
+from backend.src.domain.ports.services import RateLimiter, TokenService
 from backend.src.infrastructure.di import ContainerFactory
 
 security = HTTPBearer()
@@ -47,6 +47,7 @@ class JWTUserIdProvider(CurrentUserIdProvider):
 
 _container_factory: ContainerFactory | None = None
 _current_user_id_provider: CurrentUserIdProvider | None = None
+_rate_limiter: RateLimiter | None = None
 
 
 def get_container_factory() -> ContainerFactory:
@@ -67,3 +68,12 @@ def get_current_user_provider() -> CurrentUserIdProvider | None:
 def set_current_user_provider(provider: CurrentUserIdProvider) -> None:
     global _current_user_id_provider
     _current_user_id_provider = provider
+
+
+def get_rate_limiter() -> RateLimiter | None:
+    return _rate_limiter
+
+
+def set_rate_limiter(rate_limiter: RateLimiter | None) -> None:
+    global _rate_limiter
+    _rate_limiter = rate_limiter

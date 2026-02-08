@@ -6,6 +6,7 @@ import base64
 import hashlib
 import secrets
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 from uuid import UUID
 
@@ -13,6 +14,7 @@ from backend.src.domain.ports.services import (
     DifficultyEstimation,
     EmailMessage,
     ProgressEstimation,
+    RateLimitResult,
     TokenPair,
 )
 
@@ -63,6 +65,46 @@ class InMemoryTokenService:
         if payload:
             return payload
         return self._refresh_tokens.pop(token, None)
+
+
+class InMemoryRevokedTokenStore:
+    """In-memory revoked-token store (for tests/local fallback)."""
+
+    def __init__(self) -> None:
+        self._entries: dict[str, datetime] = {}
+
+    async def revoke(self, jti: str, ttl_seconds: int) -> None:
+        self._entries[jti] = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+
+    async def is_revoked(self, jti: str) -> bool:
+        exp = self._entries.get(jti)
+        if exp is None:
+            return False
+        if datetime.now(timezone.utc) >= exp:
+            self._entries.pop(jti, None)
+            return False
+        return True
+
+
+class InMemoryRateLimiter:
+    """In-memory fixed-window limiter (fallback for local/tests)."""
+
+    def __init__(self) -> None:
+        self._entries: dict[str, tuple[int, datetime]] = {}
+
+    async def hit(self, key: str, limit: int, window_seconds: int) -> RateLimitResult:
+        now = datetime.now(timezone.utc)
+        current, expires_at = self._entries.get(key, (0, now + timedelta(seconds=window_seconds)))
+        if now >= expires_at:
+            current = 0
+            expires_at = now + timedelta(seconds=window_seconds)
+        current += 1
+        self._entries[key] = (current, expires_at)
+        remaining = max(0, limit - current)
+        if current > limit:
+            retry_after = int((expires_at - now).total_seconds())
+            return RateLimitResult(allowed=False, remaining=0, retry_after_seconds=max(1, retry_after))
+        return RateLimitResult(allowed=True, remaining=remaining)
 
 
 class SimpleEncryptionService:

@@ -10,6 +10,7 @@ from backend.src.domain.ports.repositories import (
     ProjectRepository,
     RoleRepository,
 )
+from backend.src.domain.ports.unit_of_work import UnitOfWork
 
 
 @dataclass
@@ -34,11 +35,13 @@ class CreateInviteUseCase:
 
     def __init__(
         self,
-        project_repository: ProjectRepository,
-        role_repository: RoleRepository,
-        project_invite_repository: ProjectInviteRepository,
         base_url: str = "http://localhost:8000",
+        uow: UnitOfWork | None = None,
+        project_repository: ProjectRepository | None = None,
+        role_repository: RoleRepository | None = None,
+        project_invite_repository: ProjectInviteRepository | None = None,
     ):
+        self.uow = uow
         self.project_repository = project_repository
         self.role_repository = role_repository
         self.project_invite_repository = project_invite_repository
@@ -56,26 +59,48 @@ class CreateInviteUseCase:
             ProjectNotFoundError: If project doesn't exist.
             ManagerRequiredError: If requester is not the project manager.
         """
+        if self.uow is not None:
+            async with self.uow:
+                project = await self.uow.project_repository.find_by_id(input.project_id)
+                if project is None:
+                    raise ProjectNotFoundError(str(input.project_id))
+
+                if not project.is_manager(input.requester_id):
+                    raise ManagerRequiredError("create invitation")
+
+                role = await self.uow.role_repository.find_by_id(input.role_id)
+                if role is None or role.project_id != input.project_id:
+                    raise ValueError(f"Role {input.role_id} not found in project")
+
+                invite = ProjectInvite(
+                    project_id=input.project_id,
+                    role_id=input.role_id,
+                    created_by=input.requester_id,
+                )
+                await self.uow.project_invite_repository.save(invite)
+                await self.uow.commit()
+            invite_url = f"{self.base_url}/invites/{invite.token}"
+            return CreateInviteOutput(invite=invite, invite_url=invite_url)
+
+        if (
+            self.project_repository is None
+            or self.role_repository is None
+            or self.project_invite_repository is None
+        ):
+            raise RuntimeError("CreateInviteUseCase requires uow or repositories")
         project = await self.project_repository.find_by_id(input.project_id)
         if project is None:
             raise ProjectNotFoundError(str(input.project_id))
-
         if not project.is_manager(input.requester_id):
             raise ManagerRequiredError("create invitation")
-
-        # Verify the role exists (optional validation)
         role = await self.role_repository.find_by_id(input.role_id)
         if role is None or role.project_id != input.project_id:
             raise ValueError(f"Role {input.role_id} not found in project")
-
         invite = ProjectInvite(
             project_id=input.project_id,
             role_id=input.role_id,
             created_by=input.requester_id,
         )
-
         await self.project_invite_repository.save(invite)
-
         invite_url = f"{self.base_url}/invites/{invite.token}"
-
         return CreateInviteOutput(invite=invite, invite_url=invite_url)

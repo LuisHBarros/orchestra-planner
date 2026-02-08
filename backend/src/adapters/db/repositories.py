@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Iterable
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.domain.entities import Calendar, Task, TaskDependency, TaskLog
@@ -195,6 +195,24 @@ class PostgresTaskRepository:
             select(TaskModel).where(TaskModel.project_id == project_id)
         )
         return [m.to_entity() for m in result.scalars().all()]
+
+    async def list_by_project(
+        self, project_id: UUID, *, limit: int, offset: int
+    ) -> list[Task]:
+        result = await self._session.execute(
+            select(TaskModel)
+            .where(TaskModel.project_id == project_id)
+            .order_by(TaskModel.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return [m.to_entity() for m in result.scalars().all()]
+
+    async def count_by_project(self, project_id: UUID) -> int:
+        result = await self._session.execute(
+            select(func.count()).select_from(TaskModel).where(TaskModel.project_id == project_id)
+        )
+        return int(result.scalar_one())
 
     async def find_by_assignee(self, assignee_id: UUID) -> list[Task]:
         result = await self._session.execute(
