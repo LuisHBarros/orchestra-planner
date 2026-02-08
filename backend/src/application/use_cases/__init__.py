@@ -13,6 +13,8 @@ from backend.src.application.use_cases.invitations import (
     CreateInviteUseCase,
 )
 from backend.src.application.use_cases.project_management import (
+    ConfigureCalendarInput,
+    ConfigureCalendarUseCase,
     ConfigureProjectLLMInput,
     ConfigureProjectLLMUseCase,
     CreateProjectInput,
@@ -26,10 +28,18 @@ from backend.src.application.use_cases.project_management import (
 from backend.src.application.use_cases.task_management import (
     AbandonTaskInput,
     AbandonTaskUseCase,
+    AddDependencyInput,
+    AddDependencyUseCase,
     CompleteTaskInput,
     CompleteTaskUseCase,
+    CancelTaskInput,
+    CancelTaskUseCase,
     CreateTaskInput,
     CreateTaskUseCase,
+    DeleteTaskInput,
+    DeleteTaskUseCase,
+    RemoveDependencyInput,
+    RemoveDependencyUseCase,
     SelectTaskInput,
     SelectTaskUseCase,
 )
@@ -41,6 +51,8 @@ __all__ = [
     # Project Management
     "ConfigureProjectLLMInput",
     "ConfigureProjectLLMUseCase",
+    "ConfigureCalendarInput",
+    "ConfigureCalendarUseCase",
     "CreateProjectInput",
     "CreateProjectUseCase",
     "CreateRoleInput",
@@ -51,10 +63,18 @@ __all__ = [
     # Task Management
     "AbandonTaskInput",
     "AbandonTaskUseCase",
+    "AddDependencyInput",
+    "AddDependencyUseCase",
     "CompleteTaskInput",
     "CompleteTaskUseCase",
+    "CancelTaskInput",
+    "CancelTaskUseCase",
     "CreateTaskInput",
     "CreateTaskUseCase",
+    "DeleteTaskInput",
+    "DeleteTaskUseCase",
+    "RemoveDependencyInput",
+    "RemoveDependencyUseCase",
     "SelectTaskInput",
     "SelectTaskUseCase",
     # Invitations

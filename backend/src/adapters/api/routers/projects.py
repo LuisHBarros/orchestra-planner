@@ -1,6 +1,6 @@
 """Project management API endpoints."""
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from backend.src.adapters.api.routers.common import get_container, get_current_user_id
 from backend.src.application.use_cases.project_management import (
+    ConfigureCalendarInput,
     ConfigureProjectLLMInput,
     CreateProjectInput,
     GetProjectDetailsInput,
@@ -52,6 +53,11 @@ class ProjectDetailsResponse(BaseModel):
 class ConfigureProjectLLMRequest(BaseModel):
     provider: str = Field(..., min_length=1, max_length=100)
     api_key: str = Field(..., min_length=1)
+
+
+class ConfigureCalendarRequest(BaseModel):
+    timezone: str = Field(default="UTC", min_length=1, max_length=64)
+    exclusion_dates: list[date] = Field(default_factory=list)
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -101,5 +107,23 @@ async def configure_project_llm(
             requester_id=user_id,
             provider=request.provider,
             api_key=request.api_key,
+        )
+    )
+
+
+@router.post("/{project_id}/calendar", status_code=status.HTTP_204_NO_CONTENT)
+async def configure_calendar(
+    project_id: UUID,
+    request: ConfigureCalendarRequest,
+    container: Annotated[Container, Depends(get_container)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+) -> None:
+    use_case = container.configure_calendar_use_case()
+    await use_case.execute(
+        ConfigureCalendarInput(
+            project_id=project_id,
+            requester_id=user_id,
+            timezone=request.timezone,
+            exclusion_dates=request.exclusion_dates,
         )
     )

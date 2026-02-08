@@ -16,6 +16,7 @@ from backend.src.application.use_cases.invitations import (
     CreateInviteUseCase,
 )
 from backend.src.application.use_cases.project_management import (
+    ConfigureCalendarUseCase,
     ConfigureProjectLLMUseCase,
     CreateProjectUseCase,
     CreateRoleUseCase,
@@ -26,13 +27,18 @@ from backend.src.application.use_cases.project_management import (
 )
 from backend.src.application.use_cases.task_management import (
     AbandonTaskUseCase,
+    AddDependencyUseCase,
     AddTaskReportUseCase,
+    CancelTaskUseCase,
     CompleteTaskUseCase,
     CreateTaskUseCase,
+    DeleteTaskUseCase,
+    RemoveDependencyUseCase,
     RemoveFromTaskUseCase,
     SelectTaskUseCase,
 )
 from backend.src.domain.ports.repositories import (
+    CalendarRepository,
     ProjectInviteRepository,
     ProjectMemberRepository,
     ProjectRepository,
@@ -63,6 +69,7 @@ class Repositories:
 
     user: UserRepository
     project: ProjectRepository
+    calendar: CalendarRepository
     project_member: ProjectMemberRepository
     project_invite: ProjectInviteRepository
     role: RoleRepository
@@ -104,6 +111,7 @@ class Container:
     repositories: Repositories
     services: Services
     uow: UnitOfWork
+    public_base_url: str = "http://localhost:8000"
     domain_services: DomainServices = field(default_factory=DomainServices)
     config: "ProjectConfig | None" = None
 
@@ -119,8 +127,8 @@ class Container:
     def verify_magic_link_use_case(self) -> VerifyMagicLinkUseCase:
         """Create VerifyMagicLinkUseCase with dependencies."""
         return VerifyMagicLinkUseCase(
-            token_service=self.services.token,
             user_repository=self.repositories.user,
+            token_service=self.services.token,
         )
 
     # --- Project Management Use Cases ---
@@ -137,6 +145,14 @@ class Container:
         return ConfigureProjectLLMUseCase(
             project_repository=self.repositories.project,
             encryption_service=self.services.encryption,
+        )
+
+    def configure_calendar_use_case(self) -> ConfigureCalendarUseCase:
+        """Create ConfigureCalendarUseCase with dependencies."""
+        return ConfigureCalendarUseCase(
+            project_repository=self.repositories.project,
+            calendar_repository=self.repositories.calendar,
+            recalculate_schedule_use_case=self.recalculate_project_schedule_use_case(),
         )
 
     def create_role_use_case(self) -> CreateRoleUseCase:
@@ -164,12 +180,9 @@ class Container:
     def recalculate_project_schedule_use_case(
         self,
     ) -> RecalculateProjectScheduleUseCase:
-        """Create RecalculateProjectScheduleUseCase with dependencies."""
+        """Create RecalculateProjectScheduleUseCase with UoW."""
         return RecalculateProjectScheduleUseCase(
-            project_repository=self.repositories.project,
-            task_repository=self.repositories.task,
-            task_dependency_repository=self.repositories.task_dependency,
-            project_member_repository=self.repositories.project_member,
+            uow=self.uow,
             schedule_calculator=self.domain_services.schedule_calculator,
         )
 
@@ -181,7 +194,7 @@ class Container:
             project_repository=self.repositories.project,
             role_repository=self.repositories.role,
             project_invite_repository=self.repositories.project_invite,
-            base_url=self._public_base_url,
+            base_url=self.public_base_url,
         )
 
     def accept_invite_use_case(self) -> AcceptInviteUseCase:
@@ -195,6 +208,34 @@ class Container:
         return CreateTaskUseCase(
             project_repository=self.repositories.project,
             task_repository=self.repositories.task,
+        )
+
+    def cancel_task_use_case(self) -> CancelTaskUseCase:
+        """Create CancelTaskUseCase with dependencies."""
+        return CancelTaskUseCase(
+            uow=self.uow,
+            recalculate_schedule_use_case=self.recalculate_project_schedule_use_case(),
+        )
+
+    def delete_task_use_case(self) -> DeleteTaskUseCase:
+        """Create DeleteTaskUseCase with dependencies."""
+        return DeleteTaskUseCase(
+            uow=self.uow,
+            recalculate_schedule_use_case=self.recalculate_project_schedule_use_case(),
+        )
+
+    def add_dependency_use_case(self) -> AddDependencyUseCase:
+        """Create AddDependencyUseCase with dependencies."""
+        return AddDependencyUseCase(
+            uow=self.uow,
+            recalculate_schedule_use_case=self.recalculate_project_schedule_use_case(),
+        )
+
+    def remove_dependency_use_case(self) -> RemoveDependencyUseCase:
+        """Create RemoveDependencyUseCase with dependencies."""
+        return RemoveDependencyUseCase(
+            uow=self.uow,
+            recalculate_schedule_use_case=self.recalculate_project_schedule_use_case(),
         )
 
     def select_task_use_case(self) -> SelectTaskUseCase:
@@ -259,6 +300,10 @@ class ContainerFactory:
         self._notification_service = notification_service
         self._public_base_url = public_base_url
 
+    def get_email_service(self) -> EmailService:
+        """Expose configured email service (used for local debugging)."""
+        return self._email_service
+
     def create(
         self,
         session: AsyncSession,
@@ -277,6 +322,7 @@ class ContainerFactory:
         # Import adapters here to avoid circular imports
         # These will be implemented in backend/src/adapters/db/
         from backend.src.adapters.db import (
+            PostgresCalendarRepository,
             PostgresProjectInviteRepository,
             PostgresProjectMemberRepository,
             PostgresProjectRepository,
@@ -292,6 +338,7 @@ class ContainerFactory:
         repositories = Repositories(
             user=PostgresUserRepository(session),
             project=PostgresProjectRepository(session),
+            calendar=PostgresCalendarRepository(session),
             project_member=PostgresProjectMemberRepository(session),
             project_invite=PostgresProjectInviteRepository(session),
             role=PostgresRoleRepository(session),
@@ -314,6 +361,7 @@ class ContainerFactory:
             repositories=repositories,
             services=services,
             uow=uow,
+            public_base_url=self._public_base_url,
             config=config,
         )
 

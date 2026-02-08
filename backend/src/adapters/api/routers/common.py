@@ -6,6 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.adapters.api import deps
@@ -21,7 +22,9 @@ async def get_container(
     return factory.create(session)
 
 
-async def get_current_user_id() -> UUID:
+async def get_current_user_id(
+    auth: Annotated[HTTPAuthorizationCredentials, Depends(deps.security)],
+) -> UUID:
     """Get the current authenticated user's ID."""
     provider = deps.get_current_user_provider()
     if provider is None:
@@ -29,4 +32,4 @@ async def get_current_user_id() -> UUID:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication not configured",
         )
-    return await provider.get_user_id()
+    return await provider.get_user_id(auth)

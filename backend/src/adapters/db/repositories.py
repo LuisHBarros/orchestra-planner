@@ -251,11 +251,31 @@ class PostgresTaskDependencyRepository:
         )
         return [m.to_entity() for m in result.scalars().all()]
 
+    async def find_by_tasks(
+        self, blocking_task_id: UUID, blocked_task_id: UUID
+    ) -> TaskDependency | None:
+        result = await self._session.execute(
+            select(TaskDependencyModel).where(
+                TaskDependencyModel.blocking_task_id == blocking_task_id,
+                TaskDependencyModel.blocked_task_id == blocked_task_id,
+            )
+        )
+        model = result.scalar_one_or_none()
+        return model.to_entity() if model else None
+
     async def delete(self, dependency_id: UUID) -> None:
         await self._session.execute(
             delete(TaskDependencyModel).where(
                 (TaskDependencyModel.blocking_task_id == dependency_id)
                 | (TaskDependencyModel.blocked_task_id == dependency_id)
+            )
+        )
+
+    async def delete_by_tasks(self, blocking_task_id: UUID, blocked_task_id: UUID) -> None:
+        await self._session.execute(
+            delete(TaskDependencyModel).where(
+                TaskDependencyModel.blocking_task_id == blocking_task_id,
+                TaskDependencyModel.blocked_task_id == blocked_task_id,
             )
         )
 
@@ -307,6 +327,13 @@ class PostgresUserRepository:
     async def find_by_email(self, email: str) -> User | None:
         result = await self._session.execute(
             select(UserModel).where(UserModel.email == email.strip().lower())
+        )
+        model = result.scalar_one_or_none()
+        return model.to_entity() if model else None
+
+    async def find_by_magic_link_token_hash(self, token_hash: str) -> User | None:
+        result = await self._session.execute(
+            select(UserModel).where(UserModel.magic_link_token_hash == token_hash)
         )
         model = result.scalar_one_or_none()
         return model.to_entity() if model else None

@@ -9,9 +9,13 @@ from pydantic import BaseModel, Field
 
 from backend.src.application.use_cases.task_management import (
     AbandonTaskInput,
+    AddDependencyInput,
     AddTaskReportInput,
+    CancelTaskInput,
     CompleteTaskInput,
     CreateTaskInput,
+    DeleteTaskInput,
+    RemoveDependencyInput,
     RemoveFromTaskInput,
     SelectTaskInput,
 )
@@ -50,6 +54,10 @@ class AddReportRequest(BaseModel):
     """Request body for adding a progress report."""
 
     report_text: str = Field(..., min_length=1, max_length=5000)
+
+
+class AddDependencyRequest(BaseModel):
+    blocking_task_id: UUID
 
 
 class TaskResponse(BaseModel):
@@ -359,6 +367,113 @@ async def remove_from_task(
     task = await use_case.execute(
         RemoveFromTaskInput(
             task_id=task_id,
+            manager_user_id=user_id,
+        )
+    )
+    return TaskResponse.from_entity(task)
+
+
+@router.post(
+    "/{task_id}/cancel",
+    response_model=TaskResponse,
+    responses={
+        403: {"model": ErrorResponse, "description": "Not authorized (not manager)"},
+        404: {"model": ErrorResponse, "description": "Task or project not found"},
+    },
+)
+async def cancel_task(
+    project_id: UUID,
+    task_id: UUID,
+    container: Annotated[Container, Depends(get_container)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+) -> TaskResponse:
+    """Cancel a task (manager only)."""
+    use_case = container.cancel_task_use_case()
+    task = await use_case.execute(
+        CancelTaskInput(
+            project_id=project_id,
+            task_id=task_id,
+            manager_user_id=user_id,
+        )
+    )
+    return TaskResponse.from_entity(task)
+
+
+@router.delete(
+    "/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        403: {"model": ErrorResponse, "description": "Not authorized (not manager)"},
+        404: {"model": ErrorResponse, "description": "Task or project not found"},
+    },
+)
+async def delete_task(
+    project_id: UUID,
+    task_id: UUID,
+    container: Annotated[Container, Depends(get_container)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+) -> None:
+    """Delete a task and related dependencies (manager only)."""
+    use_case = container.delete_task_use_case()
+    await use_case.execute(
+        DeleteTaskInput(
+            project_id=project_id,
+            task_id=task_id,
+            manager_user_id=user_id,
+        )
+    )
+
+
+@router.post(
+    "/{task_id}/dependencies",
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid or circular dependency"},
+        403: {"model": ErrorResponse, "description": "Not authorized (not manager)"},
+        404: {"model": ErrorResponse, "description": "Task or project not found"},
+    },
+)
+async def add_dependency(
+    project_id: UUID,
+    task_id: UUID,
+    request: AddDependencyRequest,
+    container: Annotated[Container, Depends(get_container)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+) -> None:
+    """Add dependency: task_id depends on blocking_task_id."""
+    use_case = container.add_dependency_use_case()
+    await use_case.execute(
+        AddDependencyInput(
+            project_id=project_id,
+            blocking_task_id=request.blocking_task_id,
+            blocked_task_id=task_id,
+            manager_user_id=user_id,
+        )
+    )
+
+
+@router.delete(
+    "/{task_id}/dependencies/{blocking_task_id}",
+    response_model=TaskResponse,
+    responses={
+        403: {"model": ErrorResponse, "description": "Not authorized (not manager)"},
+        404: {"model": ErrorResponse, "description": "Task or dependency not found"},
+    },
+)
+async def remove_dependency(
+    project_id: UUID,
+    task_id: UUID,
+    blocking_task_id: UUID,
+    container: Annotated[Container, Depends(get_container)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+) -> TaskResponse:
+    """Remove dependency: task_id no longer depends on blocking_task_id."""
+    use_case = container.remove_dependency_use_case()
+    task = await use_case.execute(
+        RemoveDependencyInput(
+            project_id=project_id,
+            blocking_task_id=blocking_task_id,
+            blocked_task_id=task_id,
             manager_user_id=user_id,
         )
     )

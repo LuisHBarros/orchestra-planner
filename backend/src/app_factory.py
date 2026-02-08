@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
@@ -19,15 +18,15 @@ from backend.src.adapters.api.routers import (
     tasks_router,
 )
 from backend.src.adapters.services import (
+    EmailNotificationService,
+    FernetEncryptionService,
     InMemoryTokenService,
+    JWTTokenService,
     MockEmailService,
     MockLLMService,
     MockNotificationService,
-    RealEmailServiceStub,
-    RealEncryptionServiceStub,
-    RealLLMServiceStub,
-    RealNotificationServiceStub,
-    RealTokenServiceStub,
+    OpenAILLMService,
+    SMTPEmailService,
     SimpleEncryptionService,
 )
 from backend.src.config.settings import get_settings
@@ -47,16 +46,6 @@ from backend.src.domain.services.time_provider import SystemTimeProvider
 from backend.src.domain.time import reset_time_provider, set_time_provider
 from backend.src.infrastructure.db.session import AsyncSessionLocal
 from backend.src.infrastructure.di import ContainerFactory
-
-
-class DenyAllCurrentUserProvider(deps.CurrentUserIdProvider):
-    """Auth provider placeholder that forces authentication configuration."""
-
-    async def get_user_id(self) -> UUID:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication not configured",
-        )
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
@@ -94,27 +83,27 @@ def create_app() -> FastAPI:
         if settings.email_provider == "mock":
             email_service = MockEmailService()
         else:
-            email_service = RealEmailServiceStub()
+            email_service = SMTPEmailService(settings)
 
         if settings.token_provider == "mock":
             token_service = InMemoryTokenService()
         else:
-            token_service = RealTokenServiceStub()
+            token_service = JWTTokenService(settings)
 
         if settings.encryption_provider == "mock":
             encryption_service = SimpleEncryptionService()
         else:
-            encryption_service = RealEncryptionServiceStub()
+            encryption_service = FernetEncryptionService(settings.encryption_key or "")
 
         if settings.llm_provider == "mock":
             llm_service = MockLLMService()
         else:
-            llm_service = RealLLMServiceStub()
+            llm_service = OpenAILLMService(settings)
 
         if settings.notification_provider == "mock":
             notification_service = MockNotificationService()
         else:
-            notification_service = RealNotificationServiceStub()
+            notification_service = EmailNotificationService(email_service)
 
         factory = ContainerFactory(
             session_factory=AsyncSessionLocal,
@@ -127,7 +116,7 @@ def create_app() -> FastAPI:
         )
 
         deps.set_container_factory(factory)
-        deps.set_current_user_provider(DenyAllCurrentUserProvider())
+        deps.set_current_user_provider(deps.JWTUserIdProvider(token_service))
 
         try:
             yield

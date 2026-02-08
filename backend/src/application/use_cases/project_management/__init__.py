@@ -4,6 +4,10 @@ from backend.src.application.use_cases.project_management.configure_project_llm 
     ConfigureProjectLLMInput,
     ConfigureProjectLLMUseCase,
 )
+from backend.src.application.use_cases.project_management.configure_calendar import (
+    ConfigureCalendarInput,
+    ConfigureCalendarUseCase,
+)
 from backend.src.application.use_cases.project_management.create_project import (
     CreateProjectInput,
     CreateProjectUseCase,
@@ -35,6 +39,8 @@ from backend.src.application.use_cases.project_management.resign_from_project im
 __all__ = [
     "ConfigureProjectLLMInput",
     "ConfigureProjectLLMUseCase",
+    "ConfigureCalendarInput",
+    "ConfigureCalendarUseCase",
     "CreateProjectInput",
     "CreateProjectUseCase",
     "CreateRoleInput",
