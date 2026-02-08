@@ -11,11 +11,7 @@ from backend.src.domain.errors import (
     UserAlreadyMemberError,
     UserNotFoundError,
 )
-from backend.src.domain.ports.repositories import (
-    ProjectInviteRepository,
-    ProjectMemberRepository,
-    UserRepository,
-)
+from backend.src.domain.ports.unit_of_work import UnitOfWork
 
 
 @dataclass
@@ -37,15 +33,8 @@ class AcceptInviteOutput:
 class AcceptInviteUseCase:
     """Use case for accepting a project invitation."""
 
-    def __init__(
-        self,
-        user_repository: UserRepository,
-        project_invite_repository: ProjectInviteRepository,
-        project_member_repository: ProjectMemberRepository,
-    ):
-        self.user_repository = user_repository
-        self.project_invite_repository = project_invite_repository
-        self.project_member_repository = project_member_repository
+    def __init__(self, uow: UnitOfWork):
+        self.uow = uow
 
     async def execute(self, input: AcceptInviteInput) -> AcceptInviteOutput:
         """
@@ -61,41 +50,46 @@ class AcceptInviteUseCase:
             UserNotFoundError: If user doesn't exist.
             UserAlreadyMemberError: If user is already a project member.
         """
-        invite = await self.project_invite_repository.find_by_token(input.token)
-        if invite is None:
-            raise InviteNotFoundError(input.token)
+        async with self.uow:
+            invite = await self.uow.project_invite_repository.find_by_token(input.token)
+            if invite is None:
+                raise InviteNotFoundError(input.token)
 
-        # Check and update expiration status
-        invite.check_and_update_expiration()
+            # Check and update expiration status
+            invite.check_and_update_expiration()
 
-        if not invite.is_valid:
-            if invite.status.value == "Accepted":
-                raise InviteAlreadyAcceptedError(input.token)
-            raise InviteExpiredError(input.token)
+            if not invite.is_valid:
+                if invite.status.value == "Accepted":
+                    raise InviteAlreadyAcceptedError(input.token)
+                raise InviteExpiredError(input.token)
 
-        # Verify user exists
-        user = await self.user_repository.find_by_id(input.user_id)
-        if user is None:
-            raise UserNotFoundError(str(input.user_id))
+            # Verify user exists
+            user = await self.uow.user_repository.find_by_id(input.user_id)
+            if user is None:
+                raise UserNotFoundError(str(input.user_id))
 
-        # BR-INV-005: Check if user is already a member
-        existing_member = await self.project_member_repository.find_by_project_and_user(
-            invite.project_id, input.user_id
-        )
-        if existing_member is not None:
-            raise UserAlreadyMemberError(str(input.user_id), str(invite.project_id))
+            # BR-INV-005: Check if user is already a member
+            existing_member = (
+                await self.uow.project_member_repository.find_by_project_and_user(
+                    invite.project_id, input.user_id
+                )
+            )
+            if existing_member is not None:
+                raise UserAlreadyMemberError(str(input.user_id), str(invite.project_id))
 
-        # Accept the invite
-        invite.accept()
-        await self.project_invite_repository.save(invite)
+            # Accept the invite
+            invite.accept()
+            await self.uow.project_invite_repository.save(invite)
 
-        # Create the membership
-        member = ProjectMember(
-            project_id=invite.project_id,
-            user_id=input.user_id,
-            role_id=invite.role_id,
-            seniority_level=input.seniority_level,
-        )
-        await self.project_member_repository.save(member)
+            # Create the membership
+            member = ProjectMember(
+                project_id=invite.project_id,
+                user_id=input.user_id,
+                role_id=invite.role_id,
+                seniority_level=input.seniority_level,
+            )
+            await self.uow.project_member_repository.save(member)
+
+            await self.uow.commit()
 
         return AcceptInviteOutput(member=member)

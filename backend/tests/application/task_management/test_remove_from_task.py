@@ -27,27 +27,20 @@ from backend.src.domain.errors import (
 
 
 @pytest.fixture
-def project_repository():
-    return AsyncMock()
+def uow():
+    mock = AsyncMock()
+    mock.project_repository = AsyncMock()
+    mock.project_member_repository = AsyncMock()
+    mock.task_repository = AsyncMock()
+    mock.task_log_repository = AsyncMock()
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
+    return mock
 
 
 @pytest.fixture
-def task_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def task_log_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def use_case(project_repository, task_repository, task_log_repository):
-    return RemoveFromTaskUseCase(
-        project_repository=project_repository,
-        task_repository=task_repository,
-        task_log_repository=task_log_repository,
-    )
+def use_case(uow):
+    return RemoveFromTaskUseCase(uow=uow)
 
 
 @pytest.fixture
@@ -123,18 +116,16 @@ class TestRemoveFromTaskUseCase:
     async def test_removes_employee_from_task_successfully(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project,
         doing_task,
         manager_user_id,
     ):
         """Manager can forcibly remove an employee from a task."""
-        task_repository.find_by_id.return_value = doing_task
-        project_repository.find_by_id.return_value = project
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_repository.find_by_id.return_value = project
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = RemoveFromTaskInput(
             task_id=doing_task.id,
@@ -145,25 +136,34 @@ class TestRemoveFromTaskUseCase:
 
         assert result.status == TaskStatus.TODO
         assert result.assignee_id is None
-        task_repository.save.assert_called_once()
+        uow.task_repository.save.assert_called_once()
+        uow.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_creates_unassignment_log(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project,
         doing_task,
         employee_member,
         manager_user_id,
+        role_id,
     ):
         """BR-ASSIGN-005: Creates audit log for the unassignment."""
-        task_repository.find_by_id.return_value = doing_task
-        project_repository.find_by_id.return_value = project
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        manager_member = ProjectMember(
+            project_id=project.id,
+            user_id=manager_user_id,
+            role_id=role_id,
+            seniority_level=SeniorityLevel.LEAD,
+        )
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            manager_member
+        )
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = RemoveFromTaskInput(
             task_id=doing_task.id,
@@ -172,25 +172,23 @@ class TestRemoveFromTaskUseCase:
 
         await use_case.execute(input_data)
 
-        task_log_repository.save.assert_called_once()
-        saved_log = task_log_repository.save.call_args[0][0]
+        uow.task_log_repository.save.assert_called_once()
+        saved_log = uow.task_log_repository.save.call_args[0][0]
         assert isinstance(saved_log, TaskLog)
         assert saved_log.log_type == TaskLogType.UNASSIGN
         assert saved_log.task_id == doing_task.id
-        assert saved_log.author_id == employee_member.id
+        assert saved_log.author_id == manager_member.id
         assert "manager" in saved_log.content.lower()
 
     @pytest.mark.asyncio
     async def test_raises_task_not_found(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         manager_user_id,
     ):
         """Should raise TaskNotFoundError when task doesn't exist."""
-        task_repository.find_by_id.return_value = None
+        uow.task_repository.find_by_id.return_value = None
 
         input_data = RemoveFromTaskInput(
             task_id=uuid4(),
@@ -204,15 +202,13 @@ class TestRemoveFromTaskUseCase:
     async def test_raises_project_not_found(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         doing_task,
         manager_user_id,
     ):
         """Should raise ProjectNotFoundError when project doesn't exist."""
-        task_repository.find_by_id.return_value = doing_task
-        project_repository.find_by_id.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_repository.find_by_id.return_value = None
 
         input_data = RemoveFromTaskInput(
             task_id=doing_task.id,
@@ -226,15 +222,13 @@ class TestRemoveFromTaskUseCase:
     async def test_raises_manager_required_when_not_manager(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project,
         doing_task,
     ):
         """Should raise ManagerRequiredError when user is not the manager."""
-        task_repository.find_by_id.return_value = doing_task
-        project_repository.find_by_id.return_value = project
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_repository.find_by_id.return_value = project
         non_manager_id = uuid4()
 
         input_data = RemoveFromTaskInput(
@@ -249,16 +243,14 @@ class TestRemoveFromTaskUseCase:
     async def test_raises_task_not_assigned_when_no_assignee(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project,
         todo_task,
         manager_user_id,
     ):
         """Should raise TaskNotAssignedError when task has no assignee."""
-        task_repository.find_by_id.return_value = todo_task
-        project_repository.find_by_id.return_value = project
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.project_repository.find_by_id.return_value = project
 
         input_data = RemoveFromTaskInput(
             task_id=todo_task.id,
@@ -272,9 +264,7 @@ class TestRemoveFromTaskUseCase:
     async def test_raises_value_error_when_task_not_in_doing_status(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project,
         employee_member,
         manager_user_id,
@@ -289,8 +279,8 @@ class TestRemoveFromTaskUseCase:
         blocked_task.select(employee_member.id)
         blocked_task.block()
 
-        task_repository.find_by_id.return_value = blocked_task
-        project_repository.find_by_id.return_value = project
+        uow.task_repository.find_by_id.return_value = blocked_task
+        uow.project_repository.find_by_id.return_value = project
 
         input_data = RemoveFromTaskInput(
             task_id=blocked_task.id,
@@ -304,18 +294,16 @@ class TestRemoveFromTaskUseCase:
     async def test_task_can_be_selected_again_after_removal(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project,
         doing_task,
         manager_user_id,
     ):
         """Removed task should be selectable again."""
-        task_repository.find_by_id.return_value = doing_task
-        project_repository.find_by_id.return_value = project
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_repository.find_by_id.return_value = project
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = RemoveFromTaskInput(
             task_id=doing_task.id,
@@ -330,19 +318,17 @@ class TestRemoveFromTaskUseCase:
     async def test_employee_can_self_select_removed_task(
         self,
         use_case,
-        project_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project,
         doing_task,
         employee_member,
         manager_user_id,
     ):
         """After removal, any employee (including the same one) can select the task."""
-        task_repository.find_by_id.return_value = doing_task
-        project_repository.find_by_id.return_value = project
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_repository.find_by_id.return_value = project
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = RemoveFromTaskInput(
             task_id=doing_task.id,

@@ -30,8 +30,11 @@ from backend.src.domain.ports.services import (
     TokenService,
     WorkloadAlertData,
 )
+from backend.src.domain.ports.unit_of_work import UnitOfWork
 
 __all__ = [
+    # Unit of Work
+    "UnitOfWork",
     # Repositories
     "ProjectInviteRepository",
     "ProjectMemberRepository",

@@ -21,27 +21,19 @@ from backend.src.domain.errors import TaskNotFoundError, TaskNotOwnedError
 
 
 @pytest.fixture
-def project_member_repository():
-    return AsyncMock()
+def uow():
+    mock = AsyncMock()
+    mock.project_member_repository = AsyncMock()
+    mock.task_repository = AsyncMock()
+    mock.task_log_repository = AsyncMock()
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
+    return mock
 
 
 @pytest.fixture
-def task_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def task_log_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def use_case(project_member_repository, task_repository, task_log_repository):
-    return AbandonTaskUseCase(
-        project_member_repository=project_member_repository,
-        task_repository=task_repository,
-        task_log_repository=task_log_repository,
-    )
+def use_case(uow):
+    return AbandonTaskUseCase(uow=uow)
 
 
 @pytest.fixture
@@ -87,18 +79,18 @@ class TestAbandonTaskUseCase:
     async def test_abandons_task_successfully(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_member,
         doing_task,
         member_user_id,
     ):
         """Owner can abandon their task with a reason."""
-        task_repository.find_by_id.return_value = doing_task
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = AbandonTaskInput(
             task_id=doing_task.id,
@@ -110,24 +102,25 @@ class TestAbandonTaskUseCase:
 
         assert result.status == TaskStatus.TODO
         assert result.assignee_id is None
-        task_repository.save.assert_called_once()
+        uow.task_repository.save.assert_called_once()
+        uow.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_creates_abandon_log_with_reason(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_member,
         doing_task,
         member_user_id,
     ):
         """BR-ABANDON-002: Creates audit log with abandonment reason."""
-        task_repository.find_by_id.return_value = doing_task
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         reason = "Need to focus on higher priority task"
         input_data = AbandonTaskInput(
@@ -138,8 +131,8 @@ class TestAbandonTaskUseCase:
 
         await use_case.execute(input_data)
 
-        task_log_repository.save.assert_called_once()
-        saved_log = task_log_repository.save.call_args[0][0]
+        uow.task_log_repository.save.assert_called_once()
+        saved_log = uow.task_log_repository.save.call_args[0][0]
         assert isinstance(saved_log, TaskLog)
         assert saved_log.log_type == TaskLogType.ABANDON
         assert saved_log.content == reason
@@ -150,9 +143,7 @@ class TestAbandonTaskUseCase:
     async def test_raises_value_error_when_reason_is_empty(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
     ):
         """BR-ABANDON-002: Should raise ValueError when reason is empty."""
         input_data = AbandonTaskInput(
@@ -164,15 +155,13 @@ class TestAbandonTaskUseCase:
         with pytest.raises(ValueError, match="Abandonment reason is required"):
             await use_case.execute(input_data)
 
-        task_repository.find_by_id.assert_not_called()
+        uow.task_repository.find_by_id.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_raises_value_error_when_reason_is_whitespace(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
     ):
         """BR-ABANDON-002: Should raise ValueError when reason is only whitespace."""
         input_data = AbandonTaskInput(
@@ -185,11 +174,9 @@ class TestAbandonTaskUseCase:
             await use_case.execute(input_data)
 
     @pytest.mark.asyncio
-    async def test_raises_task_not_found(
-        self, use_case, project_member_repository, task_repository, task_log_repository
-    ):
+    async def test_raises_task_not_found(self, use_case, uow):
         """Should raise TaskNotFoundError when task doesn't exist."""
-        task_repository.find_by_id.return_value = None
+        uow.task_repository.find_by_id.return_value = None
 
         input_data = AbandonTaskInput(
             task_id=uuid4(),
@@ -204,9 +191,7 @@ class TestAbandonTaskUseCase:
     async def test_raises_task_not_owned_when_not_assigned(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_id,
     ):
         """Should raise TaskNotOwnedError when task has no assignee."""
@@ -215,7 +200,7 @@ class TestAbandonTaskUseCase:
             title="Unassigned task",
             difficulty_points=5,
         )
-        task_repository.find_by_id.return_value = unassigned_task
+        uow.task_repository.find_by_id.return_value = unassigned_task
 
         input_data = AbandonTaskInput(
             task_id=unassigned_task.id,
@@ -230,9 +215,7 @@ class TestAbandonTaskUseCase:
     async def test_raises_task_not_owned_when_different_user(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         doing_task,
     ):
         """Should raise TaskNotOwnedError when user doesn't own the task."""
@@ -243,8 +226,8 @@ class TestAbandonTaskUseCase:
             role_id=uuid4(),
             seniority_level=SeniorityLevel.MID,
         )
-        task_repository.find_by_id.return_value = doing_task
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             different_member
         )
 
@@ -261,9 +244,7 @@ class TestAbandonTaskUseCase:
     async def test_raises_value_error_when_task_not_in_doing_status(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_id,
         project_member,
         member_user_id,
@@ -277,8 +258,10 @@ class TestAbandonTaskUseCase:
         # Manually set assignee without changing status (simulating edge case)
         todo_task.assignee_id = project_member.id
 
-        task_repository.find_by_id.return_value = todo_task
-        project_member_repository.find_by_project_and_user.return_value = project_member
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
 
         input_data = AbandonTaskInput(
             task_id=todo_task.id,
@@ -295,18 +278,18 @@ class TestAbandonTaskUseCase:
     async def test_task_can_be_selected_again_after_abandonment(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_member,
         doing_task,
         member_user_id,
     ):
         """Abandoned task should be selectable again."""
-        task_repository.find_by_id.return_value = doing_task
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = AbandonTaskInput(
             task_id=doing_task.id,

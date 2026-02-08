@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.src.application.use_cases.auth import (
     RequestMagicLinkUseCase,
@@ -49,6 +49,7 @@ from backend.src.domain.ports.services import (
     NotificationService,
     TokenService,
 )
+from backend.src.domain.ports.unit_of_work import UnitOfWork
 from backend.src.domain.services.schedule_calculator import ScheduleCalculator
 from backend.src.domain.services.task_selection_policy import TaskSelectionPolicy
 
@@ -102,6 +103,7 @@ class Container:
 
     repositories: Repositories
     services: Services
+    uow: UnitOfWork
     domain_services: DomainServices = field(default_factory=DomainServices)
     config: "ProjectConfig | None" = None
 
@@ -153,19 +155,11 @@ class Container:
 
     def fire_employee_use_case(self) -> FireEmployeeUseCase:
         """Create FireEmployeeUseCase with dependencies."""
-        return FireEmployeeUseCase(
-            project_repository=self.repositories.project,
-            project_member_repository=self.repositories.project_member,
-            task_repository=self.repositories.task,
-        )
+        return FireEmployeeUseCase(uow=self.uow)
 
     def resign_from_project_use_case(self) -> ResignFromProjectUseCase:
         """Create ResignFromProjectUseCase with dependencies."""
-        return ResignFromProjectUseCase(
-            project_repository=self.repositories.project,
-            project_member_repository=self.repositories.project_member,
-            task_repository=self.repositories.task,
-        )
+        return ResignFromProjectUseCase(uow=self.uow)
 
     def recalculate_project_schedule_use_case(
         self,
@@ -190,11 +184,7 @@ class Container:
 
     def accept_invite_use_case(self) -> AcceptInviteUseCase:
         """Create AcceptInviteUseCase with dependencies."""
-        return AcceptInviteUseCase(
-            user_repository=self.repositories.user,
-            project_invite_repository=self.repositories.project_invite,
-            project_member_repository=self.repositories.project_member,
-        )
+        return AcceptInviteUseCase(uow=self.uow)
 
     # --- Task Management Use Cases ---
 
@@ -208,30 +198,18 @@ class Container:
     def select_task_use_case(self) -> SelectTaskUseCase:
         """Create SelectTaskUseCase with dependencies."""
         return SelectTaskUseCase(
-            project_repository=self.repositories.project,
-            project_member_repository=self.repositories.project_member,
-            task_repository=self.repositories.task,
-            task_log_repository=self.repositories.task_log,
-            task_dependency_repository=self.repositories.task_dependency,
+            uow=self.uow,
             selection_policy=self.domain_services.task_selection_policy,
             config=self.config,
         )
 
     def complete_task_use_case(self) -> CompleteTaskUseCase:
         """Create CompleteTaskUseCase with dependencies."""
-        return CompleteTaskUseCase(
-            project_member_repository=self.repositories.project_member,
-            task_repository=self.repositories.task,
-            task_log_repository=self.repositories.task_log,
-        )
+        return CompleteTaskUseCase(uow=self.uow)
 
     def abandon_task_use_case(self) -> AbandonTaskUseCase:
         """Create AbandonTaskUseCase with dependencies."""
-        return AbandonTaskUseCase(
-            project_member_repository=self.repositories.project_member,
-            task_repository=self.repositories.task,
-            task_log_repository=self.repositories.task_log,
-        )
+        return AbandonTaskUseCase(uow=self.uow)
 
     def add_task_report_use_case(self) -> AddTaskReportUseCase:
         """Create AddTaskReportUseCase with dependencies."""
@@ -243,12 +221,7 @@ class Container:
 
     def remove_from_task_use_case(self) -> RemoveFromTaskUseCase:
         """Create RemoveFromTaskUseCase with dependencies."""
-        return RemoveFromTaskUseCase(
-            project_repository=self.repositories.project,
-            project_member_repository=self.repositories.project_member,
-            task_repository=self.repositories.task,
-            task_log_repository=self.repositories.task_log,
-        )
+        return RemoveFromTaskUseCase(uow=self.uow)
 
 
 class ContainerFactory:
@@ -261,6 +234,7 @@ class ContainerFactory:
 
     def __init__(
         self,
+        session_factory: async_sessionmaker[AsyncSession],
         email_service: EmailService,
         token_service: TokenService,
         encryption_service: EncryptionService,
@@ -271,8 +245,10 @@ class ContainerFactory:
         Initialize the factory with service implementations.
 
         Services are typically singletons, while repositories are
-        created per-request with the session.
+        created per-request with the session. The session_factory is
+        used to create Unit of Work instances with dedicated sessions.
         """
+        self._session_factory = session_factory
         self._email_service = email_service
         self._token_service = token_service
         self._encryption_service = encryption_service
@@ -307,6 +283,8 @@ class ContainerFactory:
             PostgresUserRepository,
         )
 
+        from backend.src.infrastructure.db.unit_of_work import SqlAlchemyUnitOfWork
+
         repositories = Repositories(
             user=PostgresUserRepository(session),
             project=PostgresProjectRepository(session),
@@ -326,9 +304,12 @@ class ContainerFactory:
             notification=self._notification_service,
         )
 
+        uow = SqlAlchemyUnitOfWork(self._session_factory)
+
         return Container(
             repositories=repositories,
             services=services,
+            uow=uow,
             config=config,
         )
 

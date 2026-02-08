@@ -21,27 +21,19 @@ from backend.src.domain.errors import ManagerRequiredError, ProjectNotFoundError
 
 
 @pytest.fixture
-def project_repository():
-    return AsyncMock()
+def uow():
+    mock = AsyncMock()
+    mock.project_repository = AsyncMock()
+    mock.project_member_repository = AsyncMock()
+    mock.task_repository = AsyncMock()
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
+    return mock
 
 
 @pytest.fixture
-def project_member_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def task_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def use_case(project_repository, project_member_repository, task_repository):
-    return FireEmployeeUseCase(
-        project_repository=project_repository,
-        project_member_repository=project_member_repository,
-        task_repository=task_repository,
-    )
+def use_case(uow):
+    return FireEmployeeUseCase(uow=uow)
 
 
 @pytest.fixture
@@ -104,21 +96,19 @@ class TestFireEmployeeUseCase:
     async def test_fires_employee_successfully(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         manager_user_id,
         employee_user_id,
     ):
         """Manager can fire an employee from the project."""
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = []
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = []
+        uow.project_member_repository.delete.return_value = None
 
         input_data = FireEmployeeInput(
             project_id=project.id,
@@ -129,15 +119,14 @@ class TestFireEmployeeUseCase:
         result = await use_case.execute(input_data)
 
         assert result == []
-        project_member_repository.delete.assert_called_once_with(employee_member.id)
+        uow.project_member_repository.delete.assert_called_once_with(employee_member.id)
+        uow.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_unassigns_doing_tasks_when_firing(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         doing_task,
@@ -145,13 +134,13 @@ class TestFireEmployeeUseCase:
         employee_user_id,
     ):
         """Firing an employee unassigns all their Doing tasks."""
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = [doing_task]
-        task_repository.save_many.return_value = None
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = [doing_task]
+        uow.task_repository.save_many.return_value = None
+        uow.project_member_repository.delete.return_value = None
 
         input_data = FireEmployeeInput(
             project_id=project.id,
@@ -164,15 +153,14 @@ class TestFireEmployeeUseCase:
         assert len(result) == 1
         assert result[0].status == TaskStatus.TODO
         assert result[0].assignee_id is None
-        task_repository.save_many.assert_called_once()
+        uow.task_repository.save_many.assert_called_once()
+        uow.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_does_not_affect_todo_tasks(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         todo_task,
@@ -180,12 +168,12 @@ class TestFireEmployeeUseCase:
         employee_user_id,
     ):
         """Firing an employee does not affect Todo tasks."""
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = [todo_task]
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = [todo_task]
+        uow.project_member_repository.delete.return_value = None
 
         input_data = FireEmployeeInput(
             project_id=project.id,
@@ -196,15 +184,13 @@ class TestFireEmployeeUseCase:
         result = await use_case.execute(input_data)
 
         assert result == []
-        task_repository.save_many.assert_not_called()
+        uow.task_repository.save_many.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_handles_multiple_doing_tasks(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         manager_user_id,
@@ -216,13 +202,13 @@ class TestFireEmployeeUseCase:
         task2 = Task(project_id=project.id, title="Task 2", difficulty_points=5)
         task2.select(employee_member.id)
 
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = [task1, task2]
-        task_repository.save_many.return_value = None
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = [task1, task2]
+        uow.task_repository.save_many.return_value = None
+        uow.project_member_repository.delete.return_value = None
 
         input_data = FireEmployeeInput(
             project_id=project.id,
@@ -240,14 +226,12 @@ class TestFireEmployeeUseCase:
     async def test_raises_project_not_found(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         manager_user_id,
         employee_user_id,
     ):
         """Should raise ProjectNotFoundError when project doesn't exist."""
-        project_repository.find_by_id.return_value = None
+        uow.project_repository.find_by_id.return_value = None
 
         input_data = FireEmployeeInput(
             project_id=uuid4(),
@@ -262,14 +246,12 @@ class TestFireEmployeeUseCase:
     async def test_raises_manager_required_when_not_manager(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_user_id,
     ):
         """Should raise ManagerRequiredError when user is not the manager."""
-        project_repository.find_by_id.return_value = project
+        uow.project_repository.find_by_id.return_value = project
         non_manager_id = uuid4()
 
         input_data = FireEmployeeInput(
@@ -285,15 +267,13 @@ class TestFireEmployeeUseCase:
     async def test_raises_member_not_found_when_not_member(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         manager_user_id,
     ):
         """Should raise MemberNotFoundError when employee is not a member."""
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = None
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = None
         non_member_user_id = uuid4()
 
         input_data = FireEmployeeInput(
@@ -309,9 +289,7 @@ class TestFireEmployeeUseCase:
     async def test_raises_value_error_when_firing_manager(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         manager_user_id,
         role_id,
@@ -323,8 +301,10 @@ class TestFireEmployeeUseCase:
             role_id=role_id,
             seniority_level=SeniorityLevel.LEAD,
         )
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = manager_member
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            manager_member
+        )
 
         input_data = FireEmployeeInput(
             project_id=project.id,
@@ -339,9 +319,7 @@ class TestFireEmployeeUseCase:
     async def test_does_not_affect_other_members_tasks(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         manager_user_id,
@@ -360,12 +338,12 @@ class TestFireEmployeeUseCase:
         )
         other_task.select(other_member.id)
 
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = [other_task]
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = [other_task]
+        uow.project_member_repository.delete.return_value = None
 
         input_data = FireEmployeeInput(
             project_id=project.id,
@@ -378,3 +356,65 @@ class TestFireEmployeeUseCase:
         assert result == []
         assert other_task.status == TaskStatus.DOING
         assert other_task.assignee_id == other_member.id
+
+    @pytest.mark.asyncio
+    async def test_does_not_commit_on_delete_failure(
+        self,
+        use_case,
+        uow,
+        project,
+        employee_member,
+        doing_task,
+        manager_user_id,
+        employee_user_id,
+    ):
+        """UoW should not commit if member deletion fails."""
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            employee_member
+        )
+        uow.task_repository.find_by_project.return_value = [doing_task]
+        uow.task_repository.save_many.return_value = None
+        uow.project_member_repository.delete.side_effect = Exception("DB error")
+
+        input_data = FireEmployeeInput(
+            project_id=project.id,
+            employee_user_id=employee_user_id,
+            manager_user_id=manager_user_id,
+        )
+
+        with pytest.raises(Exception, match="DB error"):
+            await use_case.execute(input_data)
+
+        uow.commit.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_does_not_commit_on_save_many_failure(
+        self,
+        use_case,
+        uow,
+        project,
+        employee_member,
+        doing_task,
+        manager_user_id,
+        employee_user_id,
+    ):
+        """UoW should not commit if task save fails."""
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            employee_member
+        )
+        uow.task_repository.find_by_project.return_value = [doing_task]
+        uow.task_repository.save_many.side_effect = Exception("DB error")
+
+        input_data = FireEmployeeInput(
+            project_id=project.id,
+            employee_user_id=employee_user_id,
+            manager_user_id=manager_user_id,
+        )
+
+        with pytest.raises(Exception, match="DB error"):
+            await use_case.execute(input_data)
+
+        uow.commit.assert_not_called()
+        uow.project_member_repository.delete.assert_not_called()

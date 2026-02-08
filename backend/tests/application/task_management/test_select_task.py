@@ -31,65 +31,28 @@ from backend.src.domain.errors import (
 
 
 @pytest.fixture
-def project_repository():
-    return AsyncMock()
+def uow():
+    mock = AsyncMock()
+    mock.project_repository = AsyncMock()
+    mock.project_member_repository = AsyncMock()
+    mock.task_repository = AsyncMock()
+    mock.task_log_repository = AsyncMock()
+    mock.task_dependency_repository = AsyncMock()
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
+    return mock
 
 
 @pytest.fixture
-def project_member_repository():
-    return AsyncMock()
+def use_case(uow):
+    return SelectTaskUseCase(uow=uow)
 
 
 @pytest.fixture
-def task_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def task_log_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def task_dependency_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def use_case(
-    project_repository,
-    project_member_repository,
-    task_repository,
-    task_log_repository,
-    task_dependency_repository,
-):
-    return SelectTaskUseCase(
-        project_repository=project_repository,
-        project_member_repository=project_member_repository,
-        task_repository=task_repository,
-        task_log_repository=task_log_repository,
-        task_dependency_repository=task_dependency_repository,
-    )
-
-
-@pytest.fixture
-def use_case_with_multitasking(
-    project_repository,
-    project_member_repository,
-    task_repository,
-    task_log_repository,
-    task_dependency_repository,
-):
+def use_case_with_multitasking(uow):
     """Use case with multitasking enabled."""
     config = ProjectConfig(allow_multitasking=True)
-    return SelectTaskUseCase(
-        project_repository=project_repository,
-        project_member_repository=project_member_repository,
-        task_repository=task_repository,
-        task_log_repository=task_log_repository,
-        task_dependency_repository=task_dependency_repository,
-        config=config,
-    )
+    return SelectTaskUseCase(uow=uow, config=config)
 
 
 @pytest.fixture
@@ -150,25 +113,23 @@ class TestSelectTaskUseCase:
     async def test_selects_task_successfully(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         todo_task,
         member_user_id,
     ):
         """BR-ASSIGN-001: Employees select tasks themselves."""
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = todo_task
-        task_repository.find_by_assignee.return_value = []
-        task_repository.find_by_project.return_value = [todo_task]
-        task_dependency_repository.find_by_project.return_value = []
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.task_repository.find_by_assignee.return_value = []
+        uow.task_repository.find_by_project.return_value = [todo_task]
+        uow.task_dependency_repository.find_by_project.return_value = []
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -180,31 +141,30 @@ class TestSelectTaskUseCase:
 
         assert result.status == TaskStatus.DOING
         assert result.assignee_id == project_member.id
-        task_repository.save.assert_called_once()
+        uow.task_repository.save.assert_called_once()
+        uow.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_creates_assignment_log(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         todo_task,
         member_user_id,
     ):
         """BR-ASSIGN-005: All assignments are logged in history."""
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = todo_task
-        task_repository.find_by_assignee.return_value = []
-        task_repository.find_by_project.return_value = [todo_task]
-        task_dependency_repository.find_by_project.return_value = []
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.task_repository.find_by_assignee.return_value = []
+        uow.task_repository.find_by_project.return_value = [todo_task]
+        uow.task_dependency_repository.find_by_project.return_value = []
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -214,8 +174,8 @@ class TestSelectTaskUseCase:
 
         await use_case.execute(input_data)
 
-        task_log_repository.save.assert_called_once()
-        saved_log = task_log_repository.save.call_args[0][0]
+        uow.task_log_repository.save.assert_called_once()
+        saved_log = uow.task_log_repository.save.call_args[0][0]
         assert isinstance(saved_log, TaskLog)
         assert saved_log.log_type == TaskLogType.ASSIGN
         assert saved_log.task_id == todo_task.id
@@ -225,14 +185,10 @@ class TestSelectTaskUseCase:
     async def test_raises_project_not_found(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
     ):
         """Should raise ProjectNotFoundError when project doesn't exist."""
-        project_repository.find_by_id.return_value = None
+        uow.project_repository.find_by_id.return_value = None
 
         input_data = SelectTaskInput(
             project_id=uuid4(),
@@ -247,16 +203,12 @@ class TestSelectTaskUseCase:
     async def test_raises_access_denied_when_not_member(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
     ):
         """Should raise ProjectAccessDeniedError when user is not a member."""
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = None
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = None
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -271,19 +223,17 @@ class TestSelectTaskUseCase:
     async def test_raises_task_not_found(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         member_user_id,
     ):
         """Should raise TaskNotFoundError when task doesn't exist."""
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = None
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = None
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -298,11 +248,7 @@ class TestSelectTaskUseCase:
     async def test_raises_task_not_selectable_without_difficulty(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         member_user_id,
@@ -313,12 +259,14 @@ class TestSelectTaskUseCase:
             title="No difficulty task",
             difficulty_points=None,
         )
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = task_without_difficulty
-        task_repository.find_by_assignee.return_value = []
-        task_repository.find_by_project.return_value = [task_without_difficulty]
-        task_dependency_repository.find_by_project.return_value = []
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = task_without_difficulty
+        uow.task_repository.find_by_assignee.return_value = []
+        uow.task_repository.find_by_project.return_value = [task_without_difficulty]
+        uow.task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -333,11 +281,7 @@ class TestSelectTaskUseCase:
     async def test_raises_task_not_selectable_wrong_status(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         member_user_id,
@@ -350,12 +294,14 @@ class TestSelectTaskUseCase:
         )
         doing_task.select(uuid4())  # Put in Doing status
 
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = doing_task
-        task_repository.find_by_assignee.return_value = []
-        task_repository.find_by_project.return_value = [doing_task]
-        task_dependency_repository.find_by_project.return_value = []
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.task_repository.find_by_assignee.return_value = []
+        uow.task_repository.find_by_project.return_value = [doing_task]
+        uow.task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -370,11 +316,7 @@ class TestSelectTaskUseCase:
     async def test_raises_task_not_selectable_wrong_role(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         member_user_id,
@@ -387,12 +329,14 @@ class TestSelectTaskUseCase:
             difficulty_points=5,
             required_role_id=different_role_id,
         )
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = task_with_different_role
-        task_repository.find_by_assignee.return_value = []
-        task_repository.find_by_project.return_value = [task_with_different_role]
-        task_dependency_repository.find_by_project.return_value = []
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = task_with_different_role
+        uow.task_repository.find_by_assignee.return_value = []
+        uow.task_repository.find_by_project.return_value = [task_with_different_role]
+        uow.task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -407,11 +351,7 @@ class TestSelectTaskUseCase:
     async def test_raises_workload_exceeded(
         self,
         use_case_with_multitasking,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         todo_task,
@@ -429,12 +369,14 @@ class TestSelectTaskUseCase:
             for i in range(4)  # 4 * 5 = 20 points, ratio = 2.0 > 1.5
         ]
 
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = todo_task
-        task_repository.find_by_assignee.return_value = existing_tasks
-        task_repository.find_by_project.return_value = existing_tasks + [todo_task]
-        task_dependency_repository.find_by_project.return_value = []
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.task_repository.find_by_assignee.return_value = existing_tasks
+        uow.task_repository.find_by_project.return_value = existing_tasks + [todo_task]
+        uow.task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -449,11 +391,7 @@ class TestSelectTaskUseCase:
     async def test_allows_selection_within_workload_limit(
         self,
         use_case_with_multitasking,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         todo_task,
@@ -470,14 +408,16 @@ class TestSelectTaskUseCase:
             )
         ]  # 3 points, adding 5 = 8 points, ratio = 0.8 < 1.5
 
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = todo_task
-        task_repository.find_by_assignee.return_value = existing_tasks
-        task_repository.find_by_project.return_value = existing_tasks + [todo_task]
-        task_dependency_repository.find_by_project.return_value = []
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.task_repository.find_by_assignee.return_value = existing_tasks
+        uow.task_repository.find_by_project.return_value = existing_tasks + [todo_task]
+        uow.task_dependency_repository.find_by_project.return_value = []
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -497,23 +437,21 @@ class TestSelectTaskUseCaseManagerRestriction:
     async def test_manager_cannot_select_task(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         manager_member,
         todo_task,
         manager_id,
     ):
         """BR-PROJ-002: Manager cannot be assigned tasks."""
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = manager_member
-        task_repository.find_by_id.return_value = todo_task
-        task_repository.find_by_assignee.return_value = []
-        task_repository.find_by_project.return_value = [todo_task]
-        task_dependency_repository.find_by_project.return_value = []
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            manager_member
+        )
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.task_repository.find_by_assignee.return_value = []
+        uow.task_repository.find_by_project.return_value = [todo_task]
+        uow.task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -532,11 +470,7 @@ class TestSelectTaskUseCaseDependencies:
     async def test_cannot_select_task_with_unfinished_dependencies(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         member_user_id,
@@ -559,12 +493,17 @@ class TestSelectTaskUseCaseDependencies:
             blocked_task_id=blocked_task.id,
         )
 
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = blocked_task
-        task_repository.find_by_assignee.return_value = []
-        task_repository.find_by_project.return_value = [blocking_task, blocked_task]
-        task_dependency_repository.find_by_project.return_value = [dependency]
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = blocked_task
+        uow.task_repository.find_by_assignee.return_value = []
+        uow.task_repository.find_by_project.return_value = [
+            blocking_task,
+            blocked_task,
+        ]
+        uow.task_dependency_repository.find_by_project.return_value = [dependency]
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -579,11 +518,7 @@ class TestSelectTaskUseCaseDependencies:
     async def test_can_select_task_with_finished_dependencies(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         member_user_id,
@@ -608,14 +543,19 @@ class TestSelectTaskUseCaseDependencies:
             blocked_task_id=blocked_task.id,
         )
 
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = blocked_task
-        task_repository.find_by_assignee.return_value = []
-        task_repository.find_by_project.return_value = [blocking_task, blocked_task]
-        task_dependency_repository.find_by_project.return_value = [dependency]
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = blocked_task
+        uow.task_repository.find_by_assignee.return_value = []
+        uow.task_repository.find_by_project.return_value = [
+            blocking_task,
+            blocked_task,
+        ]
+        uow.task_dependency_repository.find_by_project.return_value = [dependency]
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -635,11 +575,7 @@ class TestSelectTaskUseCaseSingleTaskFocus:
     async def test_cannot_select_when_already_doing_task(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         todo_task,
@@ -653,12 +589,17 @@ class TestSelectTaskUseCaseSingleTaskFocus:
         )
         existing_doing_task.select(project_member.id)
 
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = todo_task
-        task_repository.find_by_assignee.return_value = [existing_doing_task]
-        task_repository.find_by_project.return_value = [existing_doing_task, todo_task]
-        task_dependency_repository.find_by_project.return_value = []
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.task_repository.find_by_assignee.return_value = [existing_doing_task]
+        uow.task_repository.find_by_project.return_value = [
+            existing_doing_task,
+            todo_task,
+        ]
+        uow.task_dependency_repository.find_by_project.return_value = []
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,
@@ -673,11 +614,7 @@ class TestSelectTaskUseCaseSingleTaskFocus:
     async def test_can_select_when_multitasking_enabled(
         self,
         use_case_with_multitasking,
-        project_repository,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
-        task_dependency_repository,
+        uow,
         existing_project,
         project_member,
         todo_task,
@@ -691,14 +628,19 @@ class TestSelectTaskUseCaseSingleTaskFocus:
         )
         existing_doing_task.select(project_member.id)
 
-        project_repository.find_by_id.return_value = existing_project
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.find_by_id.return_value = todo_task
-        task_repository.find_by_assignee.return_value = [existing_doing_task]
-        task_repository.find_by_project.return_value = [existing_doing_task, todo_task]
-        task_dependency_repository.find_by_project.return_value = []
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.project_repository.find_by_id.return_value = existing_project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.task_repository.find_by_assignee.return_value = [existing_doing_task]
+        uow.task_repository.find_by_project.return_value = [
+            existing_doing_task,
+            todo_task,
+        ]
+        uow.task_dependency_repository.find_by_project.return_value = []
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = SelectTaskInput(
             project_id=existing_project.id,

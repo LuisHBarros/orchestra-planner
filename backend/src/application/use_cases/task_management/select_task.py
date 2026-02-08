@@ -12,13 +12,7 @@ from backend.src.domain.errors import (
     TaskNotSelectableError,
     WorkloadExceededError,
 )
-from backend.src.domain.ports.repositories import (
-    ProjectMemberRepository,
-    ProjectRepository,
-    TaskDependencyRepository,
-    TaskLogRepository,
-    TaskRepository,
-)
+from backend.src.domain.ports.unit_of_work import UnitOfWork
 from backend.src.domain.services.task_selection_policy import (
     SelectionContext,
     TaskSelectionPolicy,
@@ -50,19 +44,11 @@ class SelectTaskUseCase:
 
     def __init__(
         self,
-        project_repository: ProjectRepository,
-        project_member_repository: ProjectMemberRepository,
-        task_repository: TaskRepository,
-        task_log_repository: TaskLogRepository,
-        task_dependency_repository: TaskDependencyRepository,
+        uow: UnitOfWork,
         selection_policy: TaskSelectionPolicy | None = None,
         config: ProjectConfig | None = None,
     ):
-        self.project_repository = project_repository
-        self.project_member_repository = project_member_repository
-        self.task_repository = task_repository
-        self.task_log_repository = task_log_repository
-        self.task_dependency_repository = task_dependency_repository
+        self.uow = uow
         self.selection_policy = selection_policy or TaskSelectionPolicy()
         self.config = config or ProjectConfig.default()
 
@@ -78,59 +64,66 @@ class SelectTaskUseCase:
             TaskNotSelectableError: If task cannot be selected.
             WorkloadExceededError: If selecting would exceed workload limit.
         """
-        # Fetch project
-        project = await self.project_repository.find_by_id(input.project_id)
-        if project is None:
-            raise ProjectNotFoundError(str(input.project_id))
+        async with self.uow:
+            # Fetch project
+            project = await self.uow.project_repository.find_by_id(input.project_id)
+            if project is None:
+                raise ProjectNotFoundError(str(input.project_id))
 
-        # Fetch member
-        member = await self.project_member_repository.find_by_project_and_user(
-            input.project_id, input.user_id
-        )
-        if member is None:
-            raise ProjectAccessDeniedError(str(input.user_id), str(input.project_id))
+            # Fetch member
+            member = await self.uow.project_member_repository.find_by_project_and_user(
+                input.project_id, input.user_id
+            )
+            if member is None:
+                raise ProjectAccessDeniedError(
+                    str(input.user_id), str(input.project_id)
+                )
 
-        # Fetch task
-        task = await self.task_repository.find_by_id(input.task_id)
-        if task is None:
-            raise TaskNotFoundError(str(input.task_id))
+            # Fetch task
+            task = await self.uow.task_repository.find_by_id(input.task_id)
+            if task is None:
+                raise TaskNotFoundError(str(input.task_id))
 
-        if task.project_id != input.project_id:
-            raise TaskNotFoundError(str(input.task_id))
+            if task.project_id != input.project_id:
+                raise TaskNotFoundError(str(input.task_id))
 
-        # Fetch context for policy evaluation
-        assigned_tasks = await self.task_repository.find_by_assignee(member.id)
-        dependencies = await self.task_dependency_repository.find_by_project(
-            input.project_id
-        )
-        all_project_tasks = await self.task_repository.find_by_project(input.project_id)
+            # Fetch context for policy evaluation
+            assigned_tasks = await self.uow.task_repository.find_by_assignee(member.id)
+            dependencies = await self.uow.task_dependency_repository.find_by_project(
+                input.project_id
+            )
+            all_project_tasks = await self.uow.task_repository.find_by_project(
+                input.project_id
+            )
 
-        # Build selection context
-        context = SelectionContext(
-            task=task,
-            project=project,
-            member=member,
-            assigned_tasks=assigned_tasks,
-            dependencies=dependencies,
-            all_project_tasks=all_project_tasks,
-            config=self.config,
-        )
+            # Build selection context
+            context = SelectionContext(
+                task=task,
+                project=project,
+                member=member,
+                assigned_tasks=assigned_tasks,
+                dependencies=dependencies,
+                all_project_tasks=all_project_tasks,
+                config=self.config,
+            )
 
-        # Evaluate selection policy
-        violation = self.selection_policy.get_first_violation(context)
-        if violation:
-            self._raise_appropriate_error(violation, task, input)
+            # Evaluate selection policy
+            violation = self.selection_policy.get_first_violation(context)
+            if violation:
+                self._raise_appropriate_error(violation, task, input)
 
-        # Select the task
-        task.select(member.id)
-        await self.task_repository.save(task)
+            # Select the task
+            task.select(member.id)
+            await self.uow.task_repository.save(task)
 
-        # Create audit log (BR-ASSIGN-005)
-        log = TaskLog.create_assignment_log(
-            task_id=task.id,
-            author_id=member.id,
-        )
-        await self.task_log_repository.save(log)
+            # Create audit log (BR-ASSIGN-005)
+            log = TaskLog.create_assignment_log(
+                task_id=task.id,
+                author_id=member.id,
+            )
+            await self.uow.task_log_repository.save(log)
+
+            await self.uow.commit()
 
         return task
 

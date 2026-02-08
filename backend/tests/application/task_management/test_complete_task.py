@@ -21,27 +21,19 @@ from backend.src.domain.errors import TaskNotFoundError, TaskNotOwnedError
 
 
 @pytest.fixture
-def project_member_repository():
-    return AsyncMock()
+def uow():
+    mock = AsyncMock()
+    mock.project_member_repository = AsyncMock()
+    mock.task_repository = AsyncMock()
+    mock.task_log_repository = AsyncMock()
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
+    return mock
 
 
 @pytest.fixture
-def task_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def task_log_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def use_case(project_member_repository, task_repository, task_log_repository):
-    return CompleteTaskUseCase(
-        project_member_repository=project_member_repository,
-        task_repository=task_repository,
-        task_log_repository=task_log_repository,
-    )
+def use_case(uow):
+    return CompleteTaskUseCase(uow=uow)
 
 
 @pytest.fixture
@@ -87,18 +79,18 @@ class TestCompleteTaskUseCase:
     async def test_completes_task_successfully(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_member,
         doing_task,
         member_user_id,
     ):
         """Owner can complete their task."""
-        task_repository.find_by_id.return_value = doing_task
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = CompleteTaskInput(
             task_id=doing_task.id,
@@ -110,24 +102,25 @@ class TestCompleteTaskUseCase:
         assert result.status == TaskStatus.DONE
         assert result.progress_percent == 100
         assert result.actual_end_date is not None
-        task_repository.save.assert_called_once()
+        uow.task_repository.save.assert_called_once()
+        uow.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_creates_status_change_log(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_member,
         doing_task,
         member_user_id,
     ):
         """BR-ASSIGN-005: All status changes are logged in history."""
-        task_repository.find_by_id.return_value = doing_task
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = CompleteTaskInput(
             task_id=doing_task.id,
@@ -136,8 +129,8 @@ class TestCompleteTaskUseCase:
 
         await use_case.execute(input_data)
 
-        task_log_repository.save.assert_called_once()
-        saved_log = task_log_repository.save.call_args[0][0]
+        uow.task_log_repository.save.assert_called_once()
+        saved_log = uow.task_log_repository.save.call_args[0][0]
         assert isinstance(saved_log, TaskLog)
         assert saved_log.log_type == TaskLogType.STATUS_CHANGE
         assert saved_log.task_id == doing_task.id
@@ -146,11 +139,9 @@ class TestCompleteTaskUseCase:
         assert "Done" in saved_log.content
 
     @pytest.mark.asyncio
-    async def test_raises_task_not_found(
-        self, use_case, project_member_repository, task_repository, task_log_repository
-    ):
+    async def test_raises_task_not_found(self, use_case, uow):
         """Should raise TaskNotFoundError when task doesn't exist."""
-        task_repository.find_by_id.return_value = None
+        uow.task_repository.find_by_id.return_value = None
 
         input_data = CompleteTaskInput(
             task_id=uuid4(),
@@ -164,9 +155,7 @@ class TestCompleteTaskUseCase:
     async def test_raises_task_not_owned_when_not_assigned(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_id,
     ):
         """Should raise TaskNotOwnedError when task has no assignee."""
@@ -175,7 +164,7 @@ class TestCompleteTaskUseCase:
             title="Unassigned task",
             difficulty_points=5,
         )
-        task_repository.find_by_id.return_value = unassigned_task
+        uow.task_repository.find_by_id.return_value = unassigned_task
 
         input_data = CompleteTaskInput(
             task_id=unassigned_task.id,
@@ -189,9 +178,7 @@ class TestCompleteTaskUseCase:
     async def test_raises_task_not_owned_when_different_user(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         doing_task,
     ):
         """Should raise TaskNotOwnedError when user doesn't own the task."""
@@ -202,8 +189,8 @@ class TestCompleteTaskUseCase:
             role_id=uuid4(),
             seniority_level=SeniorityLevel.MID,
         )
-        task_repository.find_by_id.return_value = doing_task
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             different_member
         )
 
@@ -219,9 +206,7 @@ class TestCompleteTaskUseCase:
     async def test_raises_value_error_when_task_not_in_doing_status(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_id,
         project_member,
         member_user_id,
@@ -235,8 +220,10 @@ class TestCompleteTaskUseCase:
         # Manually set assignee without changing status (simulating edge case)
         todo_task.assignee_id = project_member.id
 
-        task_repository.find_by_id.return_value = todo_task
-        project_member_repository.find_by_project_and_user.return_value = project_member
+        uow.task_repository.find_by_id.return_value = todo_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
 
         input_data = CompleteTaskInput(
             task_id=todo_task.id,
@@ -252,18 +239,18 @@ class TestCompleteTaskUseCase:
     async def test_saves_completed_task(
         self,
         use_case,
-        project_member_repository,
-        task_repository,
-        task_log_repository,
+        uow,
         project_member,
         doing_task,
         member_user_id,
     ):
         """Should save the task after completion."""
-        task_repository.find_by_id.return_value = doing_task
-        project_member_repository.find_by_project_and_user.return_value = project_member
-        task_repository.save.return_value = None
-        task_log_repository.save.return_value = None
+        uow.task_repository.find_by_id.return_value = doing_task
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            project_member
+        )
+        uow.task_repository.save.return_value = None
+        uow.task_log_repository.save.return_value = None
 
         input_data = CompleteTaskInput(
             task_id=doing_task.id,
@@ -272,6 +259,6 @@ class TestCompleteTaskUseCase:
 
         await use_case.execute(input_data)
 
-        task_repository.save.assert_called_once()
-        saved_task = task_repository.save.call_args[0][0]
+        uow.task_repository.save.assert_called_once()
+        saved_task = uow.task_repository.save.call_args[0][0]
         assert saved_task.status == TaskStatus.DONE

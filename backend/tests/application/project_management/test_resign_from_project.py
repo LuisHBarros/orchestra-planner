@@ -24,27 +24,19 @@ from backend.src.domain.errors import ProjectNotFoundError
 
 
 @pytest.fixture
-def project_repository():
-    return AsyncMock()
+def uow():
+    mock = AsyncMock()
+    mock.project_repository = AsyncMock()
+    mock.project_member_repository = AsyncMock()
+    mock.task_repository = AsyncMock()
+    mock.__aenter__ = AsyncMock(return_value=mock)
+    mock.__aexit__ = AsyncMock(return_value=False)
+    return mock
 
 
 @pytest.fixture
-def project_member_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def task_repository():
-    return AsyncMock()
-
-
-@pytest.fixture
-def use_case(project_repository, project_member_repository, task_repository):
-    return ResignFromProjectUseCase(
-        project_repository=project_repository,
-        project_member_repository=project_member_repository,
-        task_repository=task_repository,
-    )
+def use_case(uow):
+    return ResignFromProjectUseCase(uow=uow)
 
 
 @pytest.fixture
@@ -107,20 +99,18 @@ class TestResignFromProjectUseCase:
     async def test_resigns_successfully(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         employee_user_id,
     ):
         """Employee can resign from the project."""
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = []
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = []
+        uow.project_member_repository.delete.return_value = None
 
         input_data = ResignFromProjectInput(
             project_id=project.id,
@@ -130,28 +120,27 @@ class TestResignFromProjectUseCase:
         result = await use_case.execute(input_data)
 
         assert result == []
-        project_member_repository.delete.assert_called_once_with(employee_member.id)
+        uow.project_member_repository.delete.assert_called_once_with(employee_member.id)
+        uow.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_unassigns_doing_tasks_when_resigning(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         doing_task,
         employee_user_id,
     ):
         """Resigning unassigns all employee's Doing tasks."""
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = [doing_task]
-        task_repository.save_many.return_value = None
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = [doing_task]
+        uow.task_repository.save_many.return_value = None
+        uow.project_member_repository.delete.return_value = None
 
         input_data = ResignFromProjectInput(
             project_id=project.id,
@@ -163,27 +152,26 @@ class TestResignFromProjectUseCase:
         assert len(result) == 1
         assert result[0].status == TaskStatus.TODO
         assert result[0].assignee_id is None
-        task_repository.save_many.assert_called_once()
+        uow.task_repository.save_many.assert_called_once()
+        uow.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_does_not_affect_todo_tasks(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         todo_task,
         employee_user_id,
     ):
         """Resigning does not affect Todo tasks."""
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = [todo_task]
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = [todo_task]
+        uow.project_member_repository.delete.return_value = None
 
         input_data = ResignFromProjectInput(
             project_id=project.id,
@@ -193,15 +181,13 @@ class TestResignFromProjectUseCase:
         result = await use_case.execute(input_data)
 
         assert result == []
-        task_repository.save_many.assert_not_called()
+        uow.task_repository.save_many.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_handles_multiple_doing_tasks(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         employee_user_id,
@@ -212,13 +198,13 @@ class TestResignFromProjectUseCase:
         task2 = Task(project_id=project.id, title="Task 2", difficulty_points=5)
         task2.select(employee_member.id)
 
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = [task1, task2]
-        task_repository.save_many.return_value = None
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = [task1, task2]
+        uow.task_repository.save_many.return_value = None
+        uow.project_member_repository.delete.return_value = None
 
         input_data = ResignFromProjectInput(
             project_id=project.id,
@@ -235,13 +221,11 @@ class TestResignFromProjectUseCase:
     async def test_raises_project_not_found(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         employee_user_id,
     ):
         """Should raise ProjectNotFoundError when project doesn't exist."""
-        project_repository.find_by_id.return_value = None
+        uow.project_repository.find_by_id.return_value = None
 
         input_data = ResignFromProjectInput(
             project_id=uuid4(),
@@ -255,14 +239,12 @@ class TestResignFromProjectUseCase:
     async def test_raises_manager_cannot_resign(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         manager_user_id,
     ):
         """Should raise ManagerCannotResignError when manager tries to resign."""
-        project_repository.find_by_id.return_value = project
+        uow.project_repository.find_by_id.return_value = project
 
         input_data = ResignFromProjectInput(
             project_id=project.id,
@@ -273,20 +255,18 @@ class TestResignFromProjectUseCase:
             await use_case.execute(input_data)
 
         # Should not proceed to member lookup
-        project_member_repository.find_by_project_and_user.assert_not_called()
+        uow.project_member_repository.find_by_project_and_user.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_raises_member_not_found_when_not_member(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
     ):
         """Should raise MemberNotFoundError when user is not a member."""
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = None
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = None
         non_member_user_id = uuid4()
 
         input_data = ResignFromProjectInput(
@@ -301,9 +281,7 @@ class TestResignFromProjectUseCase:
     async def test_does_not_affect_other_members_tasks(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         employee_user_id,
@@ -321,12 +299,12 @@ class TestResignFromProjectUseCase:
         )
         other_task.select(other_member.id)
 
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = [other_task]
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = [other_task]
+        uow.project_member_repository.delete.return_value = None
 
         input_data = ResignFromProjectInput(
             project_id=project.id,
@@ -343,9 +321,7 @@ class TestResignFromProjectUseCase:
     async def test_tasks_can_be_selected_after_resignation(
         self,
         use_case,
-        project_repository,
-        project_member_repository,
-        task_repository,
+        uow,
         project,
         employee_member,
         doing_task,
@@ -353,13 +329,13 @@ class TestResignFromProjectUseCase:
         role_id,
     ):
         """Tasks unassigned due to resignation can be selected by others."""
-        project_repository.find_by_id.return_value = project
-        project_member_repository.find_by_project_and_user.return_value = (
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
             employee_member
         )
-        task_repository.find_by_project.return_value = [doing_task]
-        task_repository.save_many.return_value = None
-        project_member_repository.delete.return_value = None
+        uow.task_repository.find_by_project.return_value = [doing_task]
+        uow.task_repository.save_many.return_value = None
+        uow.project_member_repository.delete.return_value = None
 
         input_data = ResignFromProjectInput(
             project_id=project.id,
@@ -381,3 +357,32 @@ class TestResignFromProjectUseCase:
         result[0].select(new_member.id)
         assert result[0].status == TaskStatus.DOING
         assert result[0].assignee_id == new_member.id
+
+    @pytest.mark.asyncio
+    async def test_does_not_commit_on_delete_failure(
+        self,
+        use_case,
+        uow,
+        project,
+        employee_member,
+        doing_task,
+        employee_user_id,
+    ):
+        """UoW should not commit if member deletion fails."""
+        uow.project_repository.find_by_id.return_value = project
+        uow.project_member_repository.find_by_project_and_user.return_value = (
+            employee_member
+        )
+        uow.task_repository.find_by_project.return_value = [doing_task]
+        uow.task_repository.save_many.return_value = None
+        uow.project_member_repository.delete.side_effect = Exception("DB error")
+
+        input_data = ResignFromProjectInput(
+            project_id=project.id,
+            user_id=employee_user_id,
+        )
+
+        with pytest.raises(Exception, match="DB error"):
+            await use_case.execute(input_data)
+
+        uow.commit.assert_not_called()
