@@ -1,0 +1,15 @@
+[project]
+name = "orchestra-planner"
+version = "0.1.0"
+description = "Orchestra Planner backend"
+requires-python = ">=3.12"
+
+dependencies = [
+  "fastapi>=0.110",
+  "sqlalchemy>=2.0",
+  "pydantic>=2.0",
+  "pydantic-settings>=2.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

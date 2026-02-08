@@ -5,6 +5,11 @@ from backend.src.adapters.services.basic_services import (
     MockEmailService,
     MockLLMService,
     MockNotificationService,
+    RealEmailServiceStub,
+    RealEncryptionServiceStub,
+    RealLLMServiceStub,
+    RealNotificationServiceStub,
+    RealTokenServiceStub,
     SimpleEncryptionService,
 )
 
@@ -13,5 +18,10 @@ __all__ = [
     "MockEmailService",
     "MockLLMService",
     "MockNotificationService",
+    "RealEmailServiceStub",
+    "RealEncryptionServiceStub",
+    "RealLLMServiceStub",
+    "RealNotificationServiceStub",
+    "RealTokenServiceStub",
     "SimpleEncryptionService",
 ]

@@ -28,5 +28,6 @@ src/
 ## Resources
 - [ADRs](/docs/adr) for decision rationale.
 - [Patterns](/docs/patterns) for code examples.
+- [Configuration](/docs/configuration.md) for environment variables.
 
 **Goal:** Keep domain pure, adapters pluggable, and tests fast.

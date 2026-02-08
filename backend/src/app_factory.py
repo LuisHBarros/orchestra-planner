@@ -7,6 +7,7 @@ from uuid import UUID
 
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from backend.src.adapters.api.routers import tasks_router
 from backend.src.adapters.api.routers import tasks as tasks_router_module
@@ -15,8 +16,14 @@ from backend.src.adapters.services import (
     MockEmailService,
     MockLLMService,
     MockNotificationService,
+    RealEmailServiceStub,
+    RealEncryptionServiceStub,
+    RealLLMServiceStub,
+    RealNotificationServiceStub,
+    RealTokenServiceStub,
     SimpleEncryptionService,
 )
+from backend.src.config.settings import get_settings
 from backend.src.domain.errors import (
     DomainError,
     ManagerRequiredError,
@@ -28,6 +35,8 @@ from backend.src.domain.errors import (
     TaskNotSelectableError,
     WorkloadExceededError,
 )
+from backend.src.domain.services.time_provider import SystemTimeProvider
+from backend.src.domain.time import reset_time_provider, set_time_provider
 from backend.src.infrastructure.db.session import AsyncSessionLocal
 from backend.src.infrastructure.di import ContainerFactory
 
@@ -70,11 +79,33 @@ def _register_exception_handlers(app: FastAPI) -> None:
 def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        email_service = MockEmailService()
-        token_service = InMemoryTokenService()
-        encryption_service = SimpleEncryptionService()
-        llm_service = MockLLMService()
-        notification_service = MockNotificationService()
+        settings = get_settings()
+        time_token = set_time_provider(SystemTimeProvider())
+
+        if settings.email_provider == "mock":
+            email_service = MockEmailService()
+        else:
+            email_service = RealEmailServiceStub()
+
+        if settings.token_provider == "mock":
+            token_service = InMemoryTokenService()
+        else:
+            token_service = RealTokenServiceStub()
+
+        if settings.encryption_provider == "mock":
+            encryption_service = SimpleEncryptionService()
+        else:
+            encryption_service = RealEncryptionServiceStub()
+
+        if settings.llm_provider == "mock":
+            llm_service = MockLLMService()
+        else:
+            llm_service = RealLLMServiceStub()
+
+        if settings.notification_provider == "mock":
+            notification_service = MockNotificationService()
+        else:
+            notification_service = RealNotificationServiceStub()
 
         factory = ContainerFactory(
             session_factory=AsyncSessionLocal,
@@ -88,7 +119,10 @@ def create_app() -> FastAPI:
         tasks_router_module.set_container_factory(factory)
         tasks_router_module.set_current_user_provider(DenyAllCurrentUserProvider())
 
-        yield
+        try:
+            yield
+        finally:
+            reset_time_provider(time_token)
 
     app = FastAPI(lifespan=lifespan)
 
@@ -98,7 +132,19 @@ def create_app() -> FastAPI:
     # TODO: include other routers (projects, members, roles, auth, reports) here.
 
     @app.get("/health")
-    def health():
-        return {"status": "ok"}
+    async def health():
+        readiness = {"db": "ok"}
+        status_code = status.HTTP_200_OK
+        try:
+            async with AsyncSessionLocal() as session:
+                await session.execute(text("SELECT 1"))
+        except Exception:
+            readiness["db"] = "fail"
+            status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+        return JSONResponse(
+            status_code=status_code,
+            content={"liveness": "ok", "readiness": readiness},
+        )
 
     return app
