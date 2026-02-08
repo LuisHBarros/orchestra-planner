@@ -11,12 +11,13 @@ from backend.src.application.use_cases.project_management import (
     RecalculateProjectScheduleUseCase,
 )
 from backend.src.domain.entities import (
-    Calendar,
     ProjectMember,
+    Project,
     SeniorityLevel,
     Task,
     TaskDependency,
     TaskStatus,
+    WorkingCalendar,
 )
 from backend.src.domain.services.schedule_calculator import (
     ProjectSchedule,
@@ -41,7 +42,7 @@ def project_member_repository():
 
 
 @pytest.fixture
-def calendar_repository():
+def project_repository():
     return AsyncMock()
 
 
@@ -52,17 +53,17 @@ def schedule_calculator():
 
 @pytest.fixture
 def use_case(
+    project_repository,
     task_repository,
     task_dependency_repository,
     project_member_repository,
-    calendar_repository,
     schedule_calculator,
 ):
     return RecalculateProjectScheduleUseCase(
+        project_repository=project_repository,
         task_repository=task_repository,
         task_dependency_repository=task_dependency_repository,
         project_member_repository=project_member_repository,
-        calendar_repository=calendar_repository,
         schedule_calculator=schedule_calculator,
     )
 
@@ -146,8 +147,13 @@ def expected_schedule(task_a, task_b):
 
 
 @pytest.fixture
-def calendar(project_id):
-    return Calendar(project_id=project_id, timezone="UTC", exclusion_dates=frozenset())
+def project(project_id):
+    return Project(
+        name="Project Schedule",
+        manager_id=uuid4(),
+        calendar=WorkingCalendar(timezone="UTC"),
+        id=project_id,
+    )
 
 
 class TestRecalculateProjectScheduleUseCase:
@@ -157,10 +163,10 @@ class TestRecalculateProjectScheduleUseCase:
     async def test_returns_schedule_and_persists_task_dates_via_save_many(
         self,
         use_case,
+        project_repository,
         task_repository,
         task_dependency_repository,
         project_member_repository,
-        calendar_repository,
         schedule_calculator,
         project_id,
         task_a,
@@ -168,14 +174,14 @@ class TestRecalculateProjectScheduleUseCase:
         dep,
         member,
         expected_schedule,
-        calendar,
+        project,
     ):
         """Recalculates schedule and batch-saves updated task dates."""
         tasks = [task_a, task_b]
         task_repository.find_by_project.return_value = tasks
         task_dependency_repository.find_by_project.return_value = [dep]
         project_member_repository.find_by_project.return_value = [member]
-        calendar_repository.get_by_project_id.return_value = calendar
+        project_repository.find_by_id.return_value = project
         schedule_calculator.calculate_schedule.return_value = expected_schedule
         task_repository.save_many.side_effect = lambda ts: ts
 
@@ -190,9 +196,7 @@ class TestRecalculateProjectScheduleUseCase:
         project_member_repository.find_by_project.assert_called_once_with(
             project_id
         )
-        calendar_repository.get_by_project_id.assert_awaited_once_with(
-            project_id
-        )
+        project_repository.find_by_id.assert_awaited_once_with(project_id)
         schedule_calculator.calculate_schedule.assert_called_once()
         call_kwargs = schedule_calculator.calculate_schedule.call_args[1]
         assert call_kwargs["tasks"] == tasks
@@ -223,21 +227,21 @@ class TestRecalculateProjectScheduleUseCase:
     async def test_uses_default_seniority_for_unassigned_tasks(
         self,
         use_case,
+        project_repository,
         task_repository,
         task_dependency_repository,
         project_member_repository,
-        calendar_repository,
         schedule_calculator,
         project_id,
         task_a,
         expected_schedule,
-        calendar,
+        project,
     ):
         """Unassigned tasks use default_seniority from input."""
         task_repository.find_by_project.return_value = [task_a]
         task_dependency_repository.find_by_project.return_value = []
         project_member_repository.find_by_project.return_value = []
-        calendar_repository.get_by_project_id.return_value = calendar
+        project_repository.find_by_id.return_value = project
         schedule_calculator.calculate_schedule.return_value = expected_schedule
         task_repository.save_many.side_effect = lambda ts: ts
 
@@ -257,22 +261,22 @@ class TestRecalculateProjectScheduleUseCase:
     async def test_uses_member_seniority_for_assigned_tasks(
         self,
         use_case,
+        project_repository,
         task_repository,
         task_dependency_repository,
         project_member_repository,
-        calendar_repository,
         schedule_calculator,
         project_id,
         task_b,
         member,
         expected_schedule,
-        calendar,
+        project,
     ):
         """Assigned tasks use their assignee's seniority from project members."""
         task_repository.find_by_project.return_value = [task_b]
         task_dependency_repository.find_by_project.return_value = []
         project_member_repository.find_by_project.return_value = [member]
-        calendar_repository.get_by_project_id.return_value = calendar
+        project_repository.find_by_id.return_value = project
         schedule_calculator.calculate_schedule.return_value = expected_schedule
         task_repository.save_many.side_effect = lambda ts: ts
 
@@ -289,10 +293,10 @@ class TestRecalculateProjectScheduleUseCase:
     async def test_empty_project_returns_empty_schedule_no_save_many(
         self,
         use_case,
+        project_repository,
         task_repository,
         task_dependency_repository,
         project_member_repository,
-        calendar_repository,
         schedule_calculator,
         project_id,
     ):
@@ -301,7 +305,7 @@ class TestRecalculateProjectScheduleUseCase:
         task_repository.find_by_project.return_value = []
         task_dependency_repository.find_by_project.return_value = []
         project_member_repository.find_by_project.return_value = []
-        calendar_repository.get_by_project_id.return_value = None
+        project_repository.find_by_id.return_value = None
         schedule_calculator.calculate_schedule.return_value = empty_schedule
 
         input_data = RecalculateProjectScheduleInput(project_id=project_id)

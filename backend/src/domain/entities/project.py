@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import UUID, uuid4
 
 from backend.src.domain.time import utcnow
+from backend.src.domain.entities.working_calendar import WorkingCalendar
 
 
 @dataclass
@@ -24,6 +25,7 @@ class Project:
     llm_provider: str | None = field(default=None)
     llm_api_key_encrypted: str | None = field(default=None)
     expected_end_date: datetime | None = field(default=None)
+    calendar: WorkingCalendar = field(default_factory=WorkingCalendar.default)
     created_at: datetime = field(default_factory=utcnow)
 
     def __post_init__(self) -> None:
