@@ -45,7 +45,7 @@ backend/src/
 
 - **Framework:** FastAPI with Uvicorn
 - **Database:** PostgreSQL with SQLAlchemy 2.0+ (async), Alembic for migrations
-- **Python:** 3.14+ with dataclasses for domain entities
+- **Python:** 3.12+ with dataclasses for domain entities
 - **Validation:** Pydantic 2.x for API layer
 - **Testing:** pytest with pytest-asyncio
 

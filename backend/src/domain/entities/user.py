@@ -33,8 +33,10 @@ class User:
         """Validate and normalize user attributes."""
         if not self.email or not self.email.strip():
             raise ValueError("Email cannot be empty")
-        if not self.name or not self.name.strip():
-            raise ValueError("Name cannot be empty")
+        # Name can be empty before onboarding completes (magic-link flow).
+        # It can be enforced later at profile completion.
+        if self.name is None:
+            self.name = ""
         # BR-AUTH-003: Case-insensitive email
         self.email = self.email.strip().lower()
         self.name = self.name.strip()

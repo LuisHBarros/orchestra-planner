@@ -28,8 +28,7 @@ FROM python:3.12-slim-bookworm
 # Variáveis de ambiente para Python em produção
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/app/.venv/bin:$PATH" \
-    PYTHONPATH="/app"
+    PATH="/app/.venv/bin:$PATH"
 
 WORKDIR /app
 
@@ -39,11 +38,6 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 # Copiar apenas o ambiente virtual e o código do builder
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 COPY --from=builder --chown=appuser:appuser /app /app
-
-# Garantir compatibilidade com imports "backend.src.*"
-RUN mkdir -p /app/backend \
-    && touch /app/backend/__init__.py \
-    && ln -s /app/src /app/backend/src
 
 # Mudar para o utilizador não-root
 USER appuser

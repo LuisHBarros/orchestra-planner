@@ -27,7 +27,7 @@ services:
                 condition: service_healthy
         environment:
             - DATABASE_URL=postgresql+asyncpg://${DATABASE_USER:-postgres}:${DATABASE_PASSWORD:-postgres}@db:5432/${DATABASE_NAME:-orchestra_planner}
-            - APP_ENV=production
+            - APP_ENV=local
             - LOG_LEVEL=info
         ports:
             - "8000:8000"

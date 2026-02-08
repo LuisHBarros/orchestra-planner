@@ -22,10 +22,11 @@ def _get_database_url() -> str:
 
 def create_db_engine():
     """Create a SQLAlchemy Async engine."""
+    db_echo = os.getenv("DB_ECHO", "false").lower() == "true"
     return create_async_engine(
         _get_database_url(),
-        # echo=True is good for debugging, turn off in production
-        echo=True,
+        # Enable SQL logging only when explicitly requested.
+        echo=db_echo,
         # pool_pre_ping checks connections before handing them out (prevents 'gone away' errors)
         pool_pre_ping=True,
     )
@@ -52,5 +53,9 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     async with AsyncSessionLocal() as session:
         try:
             yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
         finally:
             await session.close()

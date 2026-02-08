@@ -25,6 +25,21 @@ class AppSettings(BaseSettings):
 
     global_llm_api_key: str | None = None
     global_llm_base_url: str | None = None
+    llm_model: str | None = None
+
+    jwt_secret_key: str | None = None
+    jwt_algorithm: str = "HS256"
+    access_token_expiry_minutes: int = 30
+    refresh_token_expiry_minutes: int = 10080
+
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_use_tls: bool = True
+
+    encryption_key: str | None = None
 
 
 @lru_cache(maxsize=1)

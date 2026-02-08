@@ -35,23 +35,23 @@ Key points:
 - **Overhead for Simple Entities:** Some simple data structures could be stored more easily in a NoSQL DB.
 
 ## Alternatives
-- **MongoDB**
-  - **Pros:** Schema-less, flexible for unstructured data, easy horizontal scaling.
-  - **Cons:** No full ACID transactions across multiple documents; harder to enforce relational integrity; complex queries can be slower and harder to optimize. Not ideal for task dependencies and workload calculations.
+### MongoDB
+Pros: Schema-less, flexible for unstructured data, easy horizontal scaling.
+Cons: No full ACID transactions across multiple documents; harder to enforce relational integrity; complex queries can be slower and harder to optimize. Not ideal for task dependencies and workload calculations.
 
-- **MySQL**
-  - **Pros:** Widely known relational database, strong community, good performance for simpler relational workloads.
-  - **Cons:** Less advanced features than PostgreSQL for complex queries, missing some advanced data types and concurrency features.
+### MySQL
+Pros: Widely known relational database, strong community, good performance for simpler relational workloads.
+Cons: Less advanced features than PostgreSQL for complex queries, missing some advanced data types and concurrency features.
 
-- **Distributed SQL / NewSQL (e.g., CockroachDB, YugabyteDB)**
-  - **Pros:** Horizontal scalability, strong consistency.
-  - **Cons:** Operational complexity, overkill for the current project size, requires additional setup and expertise.
+### Distributed SQL / NewSQL (e.g., CockroachDB, YugabyteDB)
+Pros: Horizontal scalability, strong consistency.
+Cons: Operational complexity, overkill for the current project size, requires additional setup and expertise.
 
 ## Consequences
-- The domain adapters will implement **PostgreSQL-specific repository logic**.
-- Ensures consistency of all critical workflows: task dependencies, workload calculations, project scheduling.
-- Future migrations to other SQL databases are feasible due to abstraction via repository ports.
-- Developers must be trained on PostgreSQL features (transactions, constraints, joins, indexing) for effective use.
+- Domain adapters implement PostgreSQL-specific repository logic.
+- Consistency is enforced for task dependencies, workload calculations, and project scheduling.
+- Future migrations to other SQL databases remain feasible via repository ports.
+- Developers must be trained on PostgreSQL features (transactions, constraints, joins, indexing).
 
 ## References
 - PostgreSQL Documentation – https://www.postgresql.org/docs/
