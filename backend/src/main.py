@@ -1,9 +1,3 @@
-# main.py
-from fastapi import FastAPI
+from backend.src.app_factory import create_app
 
-app = FastAPI()
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+app = create_app()

@@ -101,7 +101,7 @@ def upgrade() -> None:
         ),
         sa.Column(
             "exclusion_dates",
-            postgresql.ARRAY(sa.Date()),  # ← Mudado para ARRAY de DATE
+            postgresql.ARRAY(sa.Date()),
             server_default=sa.text("'{}'::date[]"),
             nullable=False,
         ),

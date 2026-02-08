@@ -7,7 +7,8 @@ from typing import Self
 from uuid import UUID
 
 from sqlalchemy import String
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PG_UUID
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import ARRAY, UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.src.domain.entities.calendar import Calendar, ExclusionDate
@@ -27,8 +28,8 @@ class CalendarModel(Base):
         nullable=False,
     )
     timezone: Mapped[str] = mapped_column(String(64), default="UTC", server_default="UTC")
-    exclusion_dates: Mapped[list[str]] = mapped_column(
-        JSONB, default=list, server_default="[]"
+    exclusion_dates: Mapped[list[date]] = mapped_column(
+        ARRAY(sa.Date), default=list, server_default="{}"
     )
 
     @classmethod
@@ -38,13 +39,13 @@ class CalendarModel(Base):
             id=calendar.id,
             project_id=calendar.project_id,
             timezone=calendar.timezone,
-            exclusion_dates=[d.day.isoformat() for d in calendar.exclusion_dates],
+            exclusion_dates=[d.day for d in calendar.exclusion_dates],
         )
 
     def to_entity(self) -> Calendar:
         """Convert this CalendarModel into a domain Calendar entity."""
         exclusions = frozenset(
-            ExclusionDate(date.fromisoformat(d)) for d in (self.exclusion_dates or [])
+            ExclusionDate(d) for d in (self.exclusion_dates or [])
         )
         return Calendar(
             id=self.id,

@@ -17,16 +17,6 @@ from backend.src.application.use_cases.task_management import (
     SelectTaskInput,
 )
 from backend.src.domain.entities import Task, TaskLog, TaskStatus
-from backend.src.domain.errors import (
-    ManagerRequiredError,
-    ProjectAccessDeniedError,
-    ProjectNotFoundError,
-    TaskNotAssignedError,
-    TaskNotFoundError,
-    TaskNotOwnedError,
-    TaskNotSelectableError,
-    WorkloadExceededError,
-)
 from backend.src.infrastructure.db.session import get_db
 from backend.src.infrastructure.di import Container, ContainerFactory
 
@@ -226,63 +216,6 @@ async def validate_task_belongs_to_project(
     return task
 
 
-# --- Exception Handlers ---
-
-
-def handle_domain_error(error: Exception) -> HTTPException:
-    """Convert domain errors to HTTP exceptions."""
-    if isinstance(error, TaskNotFoundError):
-        return HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(error),
-        )
-    if isinstance(error, ProjectNotFoundError):
-        return HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(error),
-        )
-    if isinstance(error, ManagerRequiredError):
-        return HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(error),
-        )
-    if isinstance(error, ProjectAccessDeniedError):
-        return HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(error),
-        )
-    if isinstance(error, TaskNotOwnedError):
-        return HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=str(error),
-        )
-    if isinstance(error, TaskNotSelectableError):
-        return HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(error),
-        )
-    if isinstance(error, WorkloadExceededError):
-        return HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(error),
-        )
-    if isinstance(error, TaskNotAssignedError):
-        return HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(error),
-        )
-    if isinstance(error, ValueError):
-        return HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(error),
-        )
-    # Unknown error - log and return 500
-    return HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="An unexpected error occurred",
-    )
-
-
 # --- Endpoints ---
 
 
@@ -308,20 +241,17 @@ async def create_task(
     """
     use_case = container.create_task_use_case()
 
-    try:
-        task = await use_case.execute(
-            CreateTaskInput(
-                project_id=project_id,
-                requester_id=user_id,
-                title=request.title,
-                description=request.description,
-                difficulty_points=request.difficulty_points,
-                required_role_id=request.required_role_id,
-            )
+    task = await use_case.execute(
+        CreateTaskInput(
+            project_id=project_id,
+            requester_id=user_id,
+            title=request.title,
+            description=request.description,
+            difficulty_points=request.difficulty_points,
+            required_role_id=request.required_role_id,
         )
-        return TaskResponse.from_entity(task)
-    except Exception as e:
-        raise handle_domain_error(e)
+    )
+    return TaskResponse.from_entity(task)
 
 
 @router.post(
@@ -348,17 +278,14 @@ async def select_task(
     """
     use_case = container.select_task_use_case()
 
-    try:
-        task = await use_case.execute(
-            SelectTaskInput(
-                project_id=project_id,
-                task_id=task_id,
-                user_id=user_id,
-            )
+    task = await use_case.execute(
+        SelectTaskInput(
+            project_id=project_id,
+            task_id=task_id,
+            user_id=user_id,
         )
-        return TaskResponse.from_entity(task)
-    except Exception as e:
-        raise handle_domain_error(e)
+    )
+    return TaskResponse.from_entity(task)
 
 
 @router.post(
@@ -387,16 +314,13 @@ async def complete_task(
 
     use_case = container.complete_task_use_case()
 
-    try:
-        task = await use_case.execute(
-            CompleteTaskInput(
-                task_id=task_id,
-                user_id=user_id,
-            )
+    task = await use_case.execute(
+        CompleteTaskInput(
+            task_id=task_id,
+            user_id=user_id,
         )
-        return TaskResponse.from_entity(task)
-    except Exception as e:
-        raise handle_domain_error(e)
+    )
+    return TaskResponse.from_entity(task)
 
 
 @router.post(
@@ -426,17 +350,14 @@ async def abandon_task(
 
     use_case = container.abandon_task_use_case()
 
-    try:
-        task = await use_case.execute(
-            AbandonTaskInput(
-                task_id=task_id,
-                user_id=user_id,
-                reason=request.reason,
-            )
+    task = await use_case.execute(
+        AbandonTaskInput(
+            task_id=task_id,
+            user_id=user_id,
+            reason=request.reason,
         )
-        return TaskResponse.from_entity(task)
-    except Exception as e:
-        raise handle_domain_error(e)
+    )
+    return TaskResponse.from_entity(task)
 
 
 @router.post(
@@ -467,17 +388,14 @@ async def add_task_report(
 
     use_case = container.add_task_report_use_case()
 
-    try:
-        log = await use_case.execute(
-            AddTaskReportInput(
-                task_id=task_id,
-                user_id=user_id,
-                report_text=request.report_text,
-            )
+    log = await use_case.execute(
+        AddTaskReportInput(
+            task_id=task_id,
+            user_id=user_id,
+            report_text=request.report_text,
         )
-        return TaskLogResponse.from_entity(log)
-    except Exception as e:
-        raise handle_domain_error(e)
+    )
+    return TaskLogResponse.from_entity(log)
 
 
 @router.post(
@@ -506,13 +424,10 @@ async def remove_from_task(
 
     use_case = container.remove_from_task_use_case()
 
-    try:
-        task = await use_case.execute(
-            RemoveFromTaskInput(
-                task_id=task_id,
-                manager_user_id=user_id,
-            )
+    task = await use_case.execute(
+        RemoveFromTaskInput(
+            task_id=task_id,
+            manager_user_id=user_id,
         )
-        return TaskResponse.from_entity(task)
-    except Exception as e:
-        raise handle_domain_error(e)
+    )
+    return TaskResponse.from_entity(task)
