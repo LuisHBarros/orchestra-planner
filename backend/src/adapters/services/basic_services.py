@@ -27,15 +27,6 @@ class MockEmailService:
         self.sent_messages.append(message)
 
 
-class RealEmailServiceStub:
-    """Placeholder for a real email provider implementation."""
-
-    async def send_email(self, message: EmailMessage) -> None:
-        raise NotImplementedError(
-            "Real email provider not configured. Set EMAIL_PROVIDER=mock."
-        )
-
-
 class InMemoryTokenService:
     """Basic token service backed by in-memory storage."""
 
@@ -56,45 +47,22 @@ class InMemoryTokenService:
     async def verify_token(self, token: str) -> Dict[str, Any] | None:
         return self._access_tokens.get(token)
 
-    async def refresh_token(self, token: str) -> Dict[str, Any] | None:
+    async def refresh_token(self, token: str) -> TokenPair | None:
         payload = self._refresh_tokens.get(token)
         if not payload:
             return None
+        self._refresh_tokens.pop(token, None)
         access_token = secrets.token_urlsafe(32)
+        refresh_token = secrets.token_urlsafe(48)
         self._access_tokens[access_token] = payload
-        return {"access_token": access_token, **payload}
+        self._refresh_tokens[refresh_token] = payload
+        return TokenPair(access_token=access_token, refresh_token=refresh_token)
 
     async def revoke_token(self, token: str) -> Dict[str, Any] | None:
         payload = self._access_tokens.pop(token, None)
         if payload:
             return payload
         return self._refresh_tokens.pop(token, None)
-
-
-class RealTokenServiceStub:
-    """Placeholder for a real token provider implementation."""
-
-    async def generate_tokens(
-        self, user_id: UUID, claims: Dict[str, Any] | None = None
-    ) -> TokenPair:
-        raise NotImplementedError(
-            "Real token provider not configured. Set TOKEN_PROVIDER=mock."
-        )
-
-    async def verify_token(self, token: str) -> Dict[str, Any] | None:
-        raise NotImplementedError(
-            "Real token provider not configured. Set TOKEN_PROVIDER=mock."
-        )
-
-    async def refresh_token(self, token: str) -> Dict[str, Any] | None:
-        raise NotImplementedError(
-            "Real token provider not configured. Set TOKEN_PROVIDER=mock."
-        )
-
-    async def revoke_token(self, token: str) -> Dict[str, Any] | None:
-        raise NotImplementedError(
-            "Real token provider not configured. Set TOKEN_PROVIDER=mock."
-        )
 
 
 class SimpleEncryptionService:
@@ -114,20 +82,6 @@ class SimpleEncryptionService:
         raw = base64.urlsafe_b64decode(ciphertext.encode())
         decoded = bytes(b ^ key[i % len(key)] for i, b in enumerate(raw))
         return decoded.decode()
-
-
-class RealEncryptionServiceStub:
-    """Placeholder for a real encryption provider implementation."""
-
-    async def encrypt(self, plaintext: str) -> str:
-        raise NotImplementedError(
-            "Real encryption provider not configured. Set ENCRYPTION_PROVIDER=mock."
-        )
-
-    async def decrypt(self, ciphertext: str) -> str:
-        raise NotImplementedError(
-            "Real encryption provider not configured. Set ENCRYPTION_PROVIDER=mock."
-        )
 
 
 class MockLLMService:
@@ -163,30 +117,6 @@ class MockLLMService:
         )
 
 
-class RealLLMServiceStub:
-    """Placeholder for a real LLM provider implementation."""
-
-    async def estimate_difficulty(
-        self,
-        task_title: str,
-        task_description: str,
-        project_context: str | None = None,
-    ) -> DifficultyEstimation:
-        raise NotImplementedError(
-            "Real LLM provider not configured. Set LLM_PROVIDER=mock."
-        )
-
-    async def estimate_progress(
-        self,
-        task_title: str,
-        task_description: str,
-        reports: list[str],
-    ) -> ProgressEstimation:
-        raise NotImplementedError(
-            "Real LLM provider not configured. Set LLM_PROVIDER=mock."
-        )
-
-
 class MockNotificationService:
     """No-op notification service for local development."""
 
@@ -208,36 +138,3 @@ class MockNotificationService:
         self, employee_email: str, employee_name: str, assigned_tasks: list[dict]
     ) -> None:
         return None
-
-
-class RealNotificationServiceStub:
-    """Placeholder for a real notification provider implementation."""
-
-    async def send_daily_report(self, manager_email: str, report) -> None:
-        raise NotImplementedError(
-            "Real notification provider not configured. Set NOTIFICATION_PROVIDER=mock."
-        )
-
-    async def send_workload_alert(self, manager_email: str, alert) -> None:
-        raise NotImplementedError(
-            "Real notification provider not configured. Set NOTIFICATION_PROVIDER=mock."
-        )
-
-    async def send_new_task_toast(self, employee_ids: list[UUID], toast) -> None:
-        raise NotImplementedError(
-            "Real notification provider not configured. Set NOTIFICATION_PROVIDER=mock."
-        )
-
-    async def send_deadline_warning(
-        self, employee_email: str, task_id: UUID, task_title: str, hours_remaining: int
-    ) -> None:
-        raise NotImplementedError(
-            "Real notification provider not configured. Set NOTIFICATION_PROVIDER=mock."
-        )
-
-    async def send_employee_daily_summary(
-        self, employee_email: str, employee_name: str, assigned_tasks: list[dict]
-    ) -> None:
-        raise NotImplementedError(
-            "Real notification provider not configured. Set NOTIFICATION_PROVIDER=mock."
-        )
