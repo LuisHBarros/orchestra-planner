@@ -14,6 +14,15 @@ selecting service providers.
 - `PUBLIC_BASE_URL` (default: `http://localhost:8000`)
   - Used to build invite URLs.
 
+- `LOG_LEVEL` (default: `INFO`)
+  - Logging level for structured JSON logs.
+
+## Request Correlation
+
+- `X-Request-Id` (header)
+  - Optional incoming request header. If missing, a UUID is generated.
+  - Always echoed back in the response header.
+
 ## Service Provider Selection
 
 Each provider can be set to `mock` (default) or a real provider name.

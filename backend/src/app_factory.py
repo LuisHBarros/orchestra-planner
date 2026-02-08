@@ -31,6 +31,7 @@ from backend.src.adapters.services import (
     SimpleEncryptionService,
 )
 from backend.src.config.settings import get_settings
+from backend.src.observability.logging_config import configure_logging
 from backend.src.domain.errors import (
     DomainError,
     ManagerRequiredError,
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         settings = get_settings()
+        configure_logging(settings.log_level)
         time_token = set_time_provider(SystemTimeProvider())
 
         if settings.email_provider == "mock":
@@ -133,6 +135,9 @@ def create_app() -> FastAPI:
             reset_time_provider(time_token)
 
     app = FastAPI(lifespan=lifespan)
+    from backend.src.adapters.api.middleware.request_id import RequestIdMiddleware
+
+    app.add_middleware(RequestIdMiddleware)
 
     _register_exception_handlers(app)
 
