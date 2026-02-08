@@ -11,6 +11,7 @@ from backend.src.domain.entities import (
     Task,
     TaskDependency,
     TaskStatus,
+    WorkingCalendar,
 )
 from backend.src.domain.services import ScheduleCalculator
 
@@ -125,6 +126,15 @@ class TestScheduleCalculatorAddWorkingDays:
         result = calculator._add_working_days(tuesday, -3)
         assert result.weekday() == 3  # Thursday
         assert result.day == 4
+
+    def test_skips_custom_non_working_dates(self, calculator, start_date):
+        """Calendar overrides should skip marked non-working dates."""
+        holiday = datetime(2024, 1, 9, 9, 0, 0, tzinfo=timezone.utc).date()
+        calendar = WorkingCalendar(exclusion_dates=frozenset({holiday}))
+
+        result = calculator._add_working_days(start_date, 1, calendar)
+        # Monday + 1 working day should skip Tuesday (holiday) -> Wednesday
+        assert result.weekday() == 2  # Wednesday
 
 
 class TestScheduleCalculatorTopologicalSort:

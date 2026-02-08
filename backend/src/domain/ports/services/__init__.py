@@ -14,6 +14,7 @@ from backend.src.domain.ports.services.notification_service import (
     WorkloadAlertData,
 )
 from backend.src.domain.ports.services.token_service import TokenPair, TokenService
+from backend.src.domain.ports.services.time_provider import TimeProvider
 
 __all__ = [
     "EmailService",
@@ -28,4 +29,5 @@ __all__ = [
     "DailyReportData",
     "WorkloadAlertData",
     "NewTaskToastData",
+    "TimeProvider",
 ]

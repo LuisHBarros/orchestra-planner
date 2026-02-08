@@ -9,8 +9,9 @@ Trigger this after:
 from dataclasses import dataclass
 from uuid import UUID
 
-from backend.src.domain.entities import SeniorityLevel, Task, TaskStatus
+from backend.src.domain.entities import SeniorityLevel, Task, TaskStatus, WorkingCalendar
 from backend.src.domain.ports.repositories import (
+    CalendarRepository,
     ProjectMemberRepository,
     TaskDependencyRepository,
     TaskRepository,
@@ -37,11 +38,13 @@ class RecalculateProjectScheduleUseCase:
         task_repository: TaskRepository,
         task_dependency_repository: TaskDependencyRepository,
         project_member_repository: ProjectMemberRepository,
+        calendar_repository: CalendarRepository,
         schedule_calculator: ScheduleCalculator,
     ):
         self.task_repository = task_repository
         self.task_dependency_repository = task_dependency_repository
         self.project_member_repository = project_member_repository
+        self.calendar_repository = calendar_repository
         self.schedule_calculator = schedule_calculator
 
     async def execute(self, input: RecalculateProjectScheduleInput) -> ProjectSchedule:
@@ -54,6 +57,11 @@ class RecalculateProjectScheduleUseCase:
         tasks = await self.task_repository.find_by_project(input.project_id)
         deps = await self.task_dependency_repository.find_by_project(input.project_id)
         members = await self.project_member_repository.find_by_project(input.project_id)
+        calendar = await self.calendar_repository.get_by_project_id(input.project_id)
+
+        working_calendar = (
+            WorkingCalendar.from_calendar(calendar) if calendar else None
+        )
 
         # Build member lookup: member_id -> seniority (for assignee duration)
         member_seniority = {m.id: m.seniority_level for m in members}
@@ -68,6 +76,7 @@ class RecalculateProjectScheduleUseCase:
             tasks=tasks,
             dependencies=deps,
             assignee_seniority=assignee_seniority,
+            working_calendar=working_calendar,
         )
 
         # Update tasks with calculated dates

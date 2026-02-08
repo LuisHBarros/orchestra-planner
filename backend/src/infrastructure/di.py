@@ -33,6 +33,7 @@ from backend.src.application.use_cases.task_management import (
     SelectTaskUseCase,
 )
 from backend.src.domain.ports.repositories import (
+    CalendarRepository,
     ProjectInviteRepository,
     ProjectMemberRepository,
     ProjectRepository,
@@ -63,6 +64,7 @@ class Repositories:
 
     user: UserRepository
     project: ProjectRepository
+    calendar: CalendarRepository
     project_member: ProjectMemberRepository
     project_invite: ProjectInviteRepository
     role: RoleRepository
@@ -169,6 +171,7 @@ class Container:
             task_repository=self.repositories.task,
             task_dependency_repository=self.repositories.task_dependency,
             project_member_repository=self.repositories.project_member,
+            calendar_repository=self.repositories.calendar,
             schedule_calculator=self.domain_services.schedule_calculator,
         )
 
@@ -273,6 +276,7 @@ class ContainerFactory:
         # Import adapters here to avoid circular imports
         # These will be implemented in backend/src/adapters/db/
         from backend.src.adapters.db import (
+            PostgresCalendarRepository,
             PostgresProjectInviteRepository,
             PostgresProjectMemberRepository,
             PostgresProjectRepository,
@@ -288,6 +292,7 @@ class ContainerFactory:
         repositories = Repositories(
             user=PostgresUserRepository(session),
             project=PostgresProjectRepository(session),
+            calendar=PostgresCalendarRepository(session),
             project_member=PostgresProjectMemberRepository(session),
             project_invite=PostgresProjectInviteRepository(session),
             role=PostgresRoleRepository(session),

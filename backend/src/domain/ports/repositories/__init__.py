@@ -7,6 +7,7 @@ from backend.src.domain.ports.repositories.project_member_repository import (
     ProjectMemberRepository,
 )
 from backend.src.domain.ports.repositories.project_repository import ProjectRepository
+from backend.src.domain.ports.repositories.calendar_repository import CalendarRepository
 from backend.src.domain.ports.repositories.role_repository import RoleRepository
 from backend.src.domain.ports.repositories.task_dependency_repository import (
     TaskDependencyRepository,
@@ -19,6 +20,7 @@ __all__ = [
     "ProjectInviteRepository",
     "ProjectMemberRepository",
     "ProjectRepository",
+    "CalendarRepository",
     "RoleRepository",
     "TaskDependencyRepository",
     "TaskLogRepository",

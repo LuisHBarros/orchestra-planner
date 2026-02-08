@@ -3,6 +3,7 @@
 from .project import Project
 from .project_config import ProjectConfig, WorkloadThresholds
 from .project_invite import INVITE_EXPIRATION_DAYS, InviteStatus, ProjectInvite
+from .calendar import Calendar, ExclusionDate
 from .project_member import ProjectMember
 from .role import Role
 from .seniority_level import SeniorityLevel
@@ -11,6 +12,7 @@ from .task_dependency import TaskDependency, detect_circular_dependency
 from .task_log import TaskLog, TaskLogType
 from .user import MAGIC_LINK_EXPIRATION_MINUTES, User
 from .workload import DEFAULT_BASE_CAPACITY, Workload, WorkloadStatus
+from .working_calendar import WorkingCalendar
 
 __all__ = [
     # User & Auth
@@ -19,6 +21,8 @@ __all__ = [
     # Project
     "Project",
     "ProjectConfig",
+    "Calendar",
+    "ExclusionDate",
     "ProjectMember",
     "ProjectInvite",
     "InviteStatus",
@@ -39,4 +43,5 @@ __all__ = [
     "WorkloadStatus",
     "WorkloadThresholds",
     "DEFAULT_BASE_CAPACITY",
+    "WorkingCalendar",
 ]

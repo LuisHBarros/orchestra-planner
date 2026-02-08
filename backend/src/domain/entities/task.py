@@ -1,9 +1,11 @@
 """Task entity definition."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
+
+from backend.src.domain.time import utcnow
 
 
 class TaskStatus(str, Enum):
@@ -56,8 +58,8 @@ class Task:
     expected_start_date: datetime | None = field(default=None)
     expected_end_date: datetime | None = field(default=None)
     actual_end_date: datetime | None = field(default=None)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=utcnow)
+    updated_at: datetime = field(default_factory=utcnow)
 
     def __post_init__(self) -> None:
         """Validate task attributes."""
@@ -79,7 +81,7 @@ class Task:
 
     def _update_timestamp(self) -> None:
         """Update the updated_at timestamp."""
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = utcnow()
 
     def can_transition_to(self, new_status: TaskStatus) -> bool:
         """Check if transition to new status is valid per BR-TASK-003."""
@@ -100,7 +102,7 @@ class Task:
         self._update_timestamp()
 
         if new_status == TaskStatus.DONE:
-            self.actual_end_date = datetime.now(timezone.utc)
+            self.actual_end_date = utcnow()
             self.progress_percent = 100
 
     def can_be_selected(self) -> bool:
@@ -212,4 +214,4 @@ class Task:
             return False
         if self.status == TaskStatus.DONE:
             return False
-        return datetime.now(timezone.utc) > self.expected_end_date
+        return utcnow() > self.expected_end_date

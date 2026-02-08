@@ -1,9 +1,11 @@
 """TaskLog entity definition for audit and history tracking."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from enum import Enum
 from uuid import UUID, uuid4
+
+from backend.src.domain.time import utcnow
 
 
 class TaskLogType(str, Enum):
@@ -32,7 +34,7 @@ class TaskLog:
     log_type: TaskLogType
     id: UUID = field(default_factory=uuid4)
     content: str = field(default="")  # Reason for abandon or report text
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=utcnow)
 
     def __post_init__(self) -> None:
         """Validate log entry."""

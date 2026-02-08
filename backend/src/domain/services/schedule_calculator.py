@@ -6,7 +6,7 @@ topological sorting to determine execution order and critical path analysis.
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal
 from uuid import UUID
 
@@ -15,7 +15,9 @@ from backend.src.domain.entities import (
     Task,
     TaskDependency,
     TaskStatus,
+    WorkingCalendar,
 )
+from backend.src.domain.time import utcnow
 
 
 @dataclass
@@ -46,6 +48,7 @@ class ScheduleCalculator:
     BR-SCHED-002: Critical path determines project end date.
     BR-SCHED-003: Schedule is recalculated when dependencies change.
     BR-PROJ-003: Project's "Expected End Date" is dynamic, calculated from critical path.
+    BR-WDAY-007: Schedule calculations only count working days.
     """
 
     # Average story points per day based on seniority
@@ -54,10 +57,10 @@ class ScheduleCalculator:
     def __init__(
         self,
         points_per_day: Decimal = DEFAULT_POINTS_PER_DAY,
-        working_days_per_week: int = 5,
+        working_calendar: WorkingCalendar | None = None,
     ):
         self.points_per_day = points_per_day
-        self.working_days_per_week = working_days_per_week
+        self.working_calendar = working_calendar or WorkingCalendar.default()
 
     def estimate_duration_days(
         self,
@@ -81,9 +84,15 @@ class ScheduleCalculator:
         days = math.ceil(float(Decimal(difficulty_points) / effective_rate))
         return max(1, days)
 
-    def _add_working_days(self, start_date: datetime, working_days: int) -> datetime:
-        """Add (or subtract) working days to/from a date, skipping weekends."""
+    def _add_working_days(
+        self,
+        start_date: datetime,
+        working_days: int,
+        working_calendar: WorkingCalendar | None = None,
+    ) -> datetime:
+        """Add (or subtract) working days to/from a date, using calendar rules."""
         current = start_date
+        calendar = working_calendar or self.working_calendar
 
         if working_days == 0:
             return current
@@ -92,8 +101,7 @@ class ScheduleCalculator:
             days_added = 0
             while days_added < working_days:
                 current += timedelta(days=1)
-                # Skip weekends (Saturday=5, Sunday=6)
-                if current.weekday() < self.working_days_per_week:
+                if calendar.is_working_day(current):
                     days_added += 1
         else:
             # Handle negative working days (backward pass)
@@ -101,8 +109,7 @@ class ScheduleCalculator:
             target = abs(working_days)
             while days_subtracted < target:
                 current -= timedelta(days=1)
-                # Skip weekends (Saturday=5, Sunday=6)
-                if current.weekday() < self.working_days_per_week:
+                if calendar.is_working_day(current):
                     days_subtracted += 1
 
         return current
@@ -154,6 +161,7 @@ class ScheduleCalculator:
         dependencies: list[TaskDependency],
         project_start_date: datetime | None = None,
         assignee_seniority: dict[UUID, SeniorityLevel] | None = None,
+        working_calendar: WorkingCalendar | None = None,
     ) -> ProjectSchedule:
         """
         Calculate schedules for all tasks in a project.
@@ -174,7 +182,9 @@ class ScheduleCalculator:
             return ProjectSchedule()
 
         if project_start_date is None:
-            project_start_date = datetime.now(timezone.utc)
+            project_start_date = utcnow()
+
+        calendar = working_calendar or self.working_calendar
 
         assignee_seniority = assignee_seniority or {}
 
@@ -232,7 +242,7 @@ class ScheduleCalculator:
             duration_days = self.estimate_duration_days(
                 task.difficulty_points, seniority
             )
-            end = self._add_working_days(start, duration_days)
+            end = self._add_working_days(start, duration_days, calendar)
 
             earliest_end[task_id] = end
 
@@ -279,7 +289,7 @@ class ScheduleCalculator:
                     task.difficulty_points, seniority
                 )
                 latest_start[task_id] = self._add_working_days(
-                    latest_end[task_id], -duration_days
+                    latest_end[task_id], -duration_days, calendar
                 )
 
             # Calculate slack and identify critical path

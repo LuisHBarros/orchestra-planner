@@ -1,8 +1,10 @@
 """ProjectMember entity definition."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
+
+from backend.src.domain.time import utcnow
 
 from .seniority_level import SeniorityLevel
 
@@ -11,18 +13,19 @@ from .seniority_level import SeniorityLevel
 class ProjectMember:
     """
     Represents a User's membership in a Project with a specific Role and Seniority.
-    
+
     This is the context of a User within a Project (Employee).
-    
+
     BR-ROLE-002: Every Employee must have exactly one Role per Project.
     BR-ROLE-003: Every Employee must have a Seniority Level.
     """
+
     project_id: UUID
     user_id: UUID
     role_id: UUID
     seniority_level: SeniorityLevel
     id: UUID = field(default_factory=uuid4)
-    joined_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    joined_at: datetime = field(default_factory=utcnow)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, ProjectMember):

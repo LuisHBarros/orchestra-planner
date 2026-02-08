@@ -1,8 +1,10 @@
 """Project entity definition."""
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
+
+from backend.src.domain.time import utcnow
 
 
 @dataclass
@@ -22,7 +24,7 @@ class Project:
     llm_provider: str | None = field(default=None)
     llm_api_key_encrypted: str | None = field(default=None)
     expected_end_date: datetime | None = field(default=None)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=utcnow)
 
     def __post_init__(self) -> None:
         """Validate project attributes."""
