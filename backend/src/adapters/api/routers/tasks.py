@@ -6,7 +6,6 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.application.use_cases.task_management import (
     AbandonTaskInput,
@@ -17,8 +16,8 @@ from backend.src.application.use_cases.task_management import (
     SelectTaskInput,
 )
 from backend.src.domain.entities import Task, TaskLog, TaskStatus
-from backend.src.infrastructure.db.session import get_db
-from backend.src.infrastructure.di import Container, ContainerFactory
+from backend.src.adapters.api.routers.common import get_container, get_current_user_id
+from backend.src.infrastructure.di import Container
 
 router = APIRouter(prefix="/projects/{project_id}/tasks", tags=["tasks"])
 
@@ -120,73 +119,6 @@ class ErrorResponse(BaseModel):
 
     detail: str
     rule_id: str | None = None
-
-
-# --- Dependencies ---
-
-# This would typically be initialized at app startup with real service implementations
-_container_factory: ContainerFactory | None = None
-
-# Injectable user ID provider for authentication
-# Override this dependency in tests or when wiring real auth middleware
-_current_user_id_provider: "CurrentUserIdProvider | None" = None
-
-
-class CurrentUserIdProvider:
-    """
-    Protocol for providing the current authenticated user ID.
-
-    Implement this interface and set it via set_current_user_provider()
-    to integrate with your authentication system.
-    """
-
-    async def get_user_id(self) -> UUID:
-        """Return the authenticated user's ID."""
-        raise NotImplementedError
-
-
-def get_container_factory() -> ContainerFactory:
-    """Get the container factory (initialized at app startup)."""
-    if _container_factory is None:
-        raise RuntimeError("ContainerFactory not initialized")
-    return _container_factory
-
-
-def set_container_factory(factory: ContainerFactory) -> None:
-    """Set the container factory (called at app startup)."""
-    global _container_factory
-    _container_factory = factory
-
-
-def set_current_user_provider(provider: CurrentUserIdProvider) -> None:
-    """Set the current user ID provider (called at app startup)."""
-    global _current_user_id_provider
-    _current_user_id_provider = provider
-
-
-async def get_container(
-    session: Annotated[AsyncSession, Depends(get_db)],
-    factory: Annotated[ContainerFactory, Depends(get_container_factory)],
-) -> Container:
-    """FastAPI dependency for obtaining a DI container."""
-    return factory.create(session)
-
-
-async def get_current_user_id() -> UUID:
-    """
-    Get the current authenticated user's ID.
-
-    This dependency requires a CurrentUserIdProvider to be configured
-    via set_current_user_provider() at application startup.
-
-    In tests, use FastAPI's dependency_overrides to provide a mock user ID.
-    """
-    if _current_user_id_provider is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication not configured",
-        )
-    return await _current_user_id_provider.get_user_id()
 
 
 # --- Helpers ---

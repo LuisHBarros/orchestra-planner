@@ -5,6 +5,7 @@ from uuid import UUID
 
 from backend.src.domain.entities import Task, TaskStatus
 from backend.src.domain.errors import (
+    DomainError,
     ProjectNotFoundError,
 )
 from backend.src.domain.ports.unit_of_work import UnitOfWork
@@ -18,23 +19,27 @@ class ResignFromProjectInput:
     user_id: UUID  # User ID of the employee resigning
 
 
-class MemberNotFoundError(Exception):
+class MemberNotFoundError(DomainError):
     """Raised when project member is not found."""
 
     def __init__(self, user_id: str, project_id: str):
         self.user_id = user_id
         self.project_id = project_id
-        super().__init__(f"User {user_id} is not a member of project {project_id}")
+        super().__init__(
+            f"User {user_id} is not a member of project {project_id}",
+            status=404,
+        )
 
 
-class ManagerCannotResignError(Exception):
+class ManagerCannotResignError(DomainError):
     """Raised when manager tries to resign from their own project."""
 
     def __init__(self, project_id: str):
         self.project_id = project_id
         super().__init__(
             f"Manager cannot resign from project {project_id}. "
-            "Transfer ownership or delete the project instead."
+            "Transfer ownership or delete the project instead.",
+            status=400,
         )
 
 

@@ -5,6 +5,7 @@ from uuid import UUID
 
 from backend.src.domain.entities import Task, TaskStatus
 from backend.src.domain.errors import (
+    DomainError,
     ManagerRequiredError,
     ProjectNotFoundError,
 )
@@ -20,13 +21,16 @@ class FireEmployeeInput:
     manager_user_id: UUID  # User ID of the manager performing the action
 
 
-class MemberNotFoundError(Exception):
+class MemberNotFoundError(DomainError):
     """Raised when project member is not found."""
 
     def __init__(self, user_id: str, project_id: str):
         self.user_id = user_id
         self.project_id = project_id
-        super().__init__(f"User {user_id} is not a member of project {project_id}")
+        super().__init__(
+            f"User {user_id} is not a member of project {project_id}",
+            status=404,
+        )
 
 
 class FireEmployeeUseCase:

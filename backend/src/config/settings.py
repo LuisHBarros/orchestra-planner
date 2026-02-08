@@ -14,6 +14,8 @@ class AppSettings(BaseSettings):
 
     app_env: str = "local"
 
+    public_base_url: str = "http://localhost:8000"
+
     email_provider: str = "mock"
     llm_provider: str = "mock"
     token_provider: str = "mock"

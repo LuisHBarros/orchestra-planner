@@ -11,6 +11,9 @@ selecting service providers.
 - `DATABASE_URL` (required)
   - Async SQLAlchemy database URL.
 
+- `PUBLIC_BASE_URL` (default: `http://localhost:8000`)
+  - Used to build invite URLs.
+
 ## Service Provider Selection
 
 Each provider can be set to `mock` (default) or a real provider name.

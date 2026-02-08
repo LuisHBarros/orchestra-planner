@@ -181,6 +181,7 @@ class Container:
             project_repository=self.repositories.project,
             role_repository=self.repositories.role,
             project_invite_repository=self.repositories.project_invite,
+            base_url=self._public_base_url,
         )
 
     def accept_invite_use_case(self) -> AcceptInviteUseCase:
@@ -241,6 +242,7 @@ class ContainerFactory:
         encryption_service: EncryptionService,
         llm_service: LLMService | None = None,
         notification_service: NotificationService | None = None,
+        public_base_url: str = "http://localhost:8000",
     ):
         """
         Initialize the factory with service implementations.
@@ -255,6 +257,7 @@ class ContainerFactory:
         self._encryption_service = encryption_service
         self._llm_service = llm_service
         self._notification_service = notification_service
+        self._public_base_url = public_base_url
 
     def create(
         self,

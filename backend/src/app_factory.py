@@ -9,8 +9,15 @@ from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
-from backend.src.adapters.api.routers import tasks_router
-from backend.src.adapters.api.routers import tasks as tasks_router_module
+from backend.src.adapters.api import deps
+from backend.src.adapters.api.routers import (
+    auth_router,
+    invites_router,
+    members_router,
+    projects_router,
+    roles_router,
+    tasks_router,
+)
 from backend.src.adapters.services import (
     InMemoryTokenService,
     MockEmailService,
@@ -41,7 +48,7 @@ from backend.src.infrastructure.db.session import AsyncSessionLocal
 from backend.src.infrastructure.di import ContainerFactory
 
 
-class DenyAllCurrentUserProvider(tasks_router_module.CurrentUserIdProvider):
+class DenyAllCurrentUserProvider(deps.CurrentUserIdProvider):
     """Auth provider placeholder that forces authentication configuration."""
 
     async def get_user_id(self) -> UUID:
@@ -114,10 +121,11 @@ def create_app() -> FastAPI:
             encryption_service=encryption_service,
             llm_service=llm_service,
             notification_service=notification_service,
+            public_base_url=settings.public_base_url,
         )
 
-        tasks_router_module.set_container_factory(factory)
-        tasks_router_module.set_current_user_provider(DenyAllCurrentUserProvider())
+        deps.set_container_factory(factory)
+        deps.set_current_user_provider(DenyAllCurrentUserProvider())
 
         try:
             yield
@@ -128,8 +136,12 @@ def create_app() -> FastAPI:
 
     _register_exception_handlers(app)
 
+    app.include_router(auth_router)
+    app.include_router(projects_router)
+    app.include_router(roles_router)
+    app.include_router(invites_router)
+    app.include_router(members_router)
     app.include_router(tasks_router)
-    # TODO: include other routers (projects, members, roles, auth, reports) here.
 
     @app.get("/health")
     async def health():
