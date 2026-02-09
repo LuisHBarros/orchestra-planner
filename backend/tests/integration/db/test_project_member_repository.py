@@ -40,3 +40,33 @@ async def test_project_member_repository_roundtrip(db_session):
     found = await repo.find_by_project_and_user(project.id, employee.id)
     assert found is not None
     assert found.id == member.id
+
+
+@pytest.mark.asyncio
+async def test_project_member_repository_pagination_and_count(db_session):
+    user_repo = PostgresUserRepository(db_session)
+    project_repo = PostgresProjectRepository(db_session)
+    role_repo = PostgresRoleRepository(db_session)
+    repo = PostgresProjectMemberRepository(db_session)
+
+    manager = User(email="manager2@example.com", name="Manager")
+    await user_repo.save(manager)
+    project = Project(name="Proj2", manager_id=manager.id)
+    await project_repo.save(project)
+    role = Role(project_id=project.id, name="Dev")
+    await role_repo.save(role)
+
+    for i in range(3):
+        employee = User(email=f"employee{i}@example.com", name=f"Emp{i}")
+        await user_repo.save(employee)
+        member = ProjectMember(
+            project_id=project.id,
+            user_id=employee.id,
+            role_id=role.id,
+            seniority_level=SeniorityLevel.MID,
+        )
+        await repo.save(member)
+
+    assert await repo.count_by_project(project.id) == 3
+    page = await repo.list_by_project(project.id, limit=2, offset=1)
+    assert len(page) == 2

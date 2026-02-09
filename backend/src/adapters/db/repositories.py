@@ -99,6 +99,26 @@ class PostgresProjectMemberRepository:
         )
         return [m.to_entity() for m in result.scalars().all()]
 
+    async def list_by_project(
+        self, project_id: UUID, *, limit: int, offset: int
+    ) -> list[ProjectMember]:
+        result = await self._session.execute(
+            select(ProjectMemberModel)
+            .where(ProjectMemberModel.project_id == project_id)
+            .order_by(ProjectMemberModel.joined_at.desc(), ProjectMemberModel.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return [m.to_entity() for m in result.scalars().all()]
+
+    async def count_by_project(self, project_id: UUID) -> int:
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(ProjectMemberModel)
+            .where(ProjectMemberModel.project_id == project_id)
+        )
+        return int(result.scalar_one())
+
     async def find_by_project_and_user(
         self, project_id: UUID, user_id: UUID
     ) -> ProjectMember | None:
@@ -141,6 +161,26 @@ class PostgresProjectInviteRepository:
             select(ProjectInviteModel).where(ProjectInviteModel.project_id == project_id)
         )
         return [m.to_entity() for m in result.scalars().all()]
+
+    async def list_by_project(
+        self, project_id: UUID, *, limit: int, offset: int
+    ) -> list[ProjectInvite]:
+        result = await self._session.execute(
+            select(ProjectInviteModel)
+            .where(ProjectInviteModel.project_id == project_id)
+            .order_by(ProjectInviteModel.created_at.desc(), ProjectInviteModel.token.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return [m.to_entity() for m in result.scalars().all()]
+
+    async def count_by_project(self, project_id: UUID) -> int:
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(ProjectInviteModel)
+            .where(ProjectInviteModel.project_id == project_id)
+        )
+        return int(result.scalar_one())
 
     async def save(self, project_invite: ProjectInvite) -> ProjectInvite:
         model = ProjectInviteModel.from_entity(project_invite)
@@ -202,7 +242,7 @@ class PostgresTaskRepository:
         result = await self._session.execute(
             select(TaskModel)
             .where(TaskModel.project_id == project_id)
-            .order_by(TaskModel.created_at.desc())
+            .order_by(TaskModel.created_at.desc(), TaskModel.id.desc())
             .offset(offset)
             .limit(limit)
         )
@@ -269,6 +309,32 @@ class PostgresTaskDependencyRepository:
         )
         return [m.to_entity() for m in result.scalars().all()]
 
+    async def list_by_project(
+        self, project_id: UUID, *, limit: int, offset: int
+    ) -> list[TaskDependency]:
+        result = await self._session.execute(
+            select(TaskDependencyModel)
+            .join(TaskModel, TaskDependencyModel.blocking_task_id == TaskModel.id)
+            .where(TaskModel.project_id == project_id)
+            .order_by(
+                TaskDependencyModel.created_at.desc(),
+                TaskDependencyModel.blocking_task_id.desc(),
+                TaskDependencyModel.blocked_task_id.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        )
+        return [m.to_entity() for m in result.scalars().all()]
+
+    async def count_by_project(self, project_id: UUID) -> int:
+        result = await self._session.execute(
+            select(func.count())
+            .select_from(TaskDependencyModel)
+            .join(TaskModel, TaskDependencyModel.blocking_task_id == TaskModel.id)
+            .where(TaskModel.project_id == project_id)
+        )
+        return int(result.scalar_one())
+
     async def find_by_tasks(
         self, blocking_task_id: UUID, blocked_task_id: UUID
     ) -> TaskDependency | None:
@@ -315,6 +381,24 @@ class PostgresTaskLogRepository:
             select(TaskLogModel).where(TaskLogModel.task_id == task_id)
         )
         return [m.to_entity() for m in result.scalars().all()]
+
+    async def list_by_task(
+        self, task_id: UUID, *, limit: int, offset: int
+    ) -> list[TaskLog]:
+        result = await self._session.execute(
+            select(TaskLogModel)
+            .where(TaskLogModel.task_id == task_id)
+            .order_by(TaskLogModel.created_at.desc(), TaskLogModel.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        return [m.to_entity() for m in result.scalars().all()]
+
+    async def count_by_task(self, task_id: UUID) -> int:
+        result = await self._session.execute(
+            select(func.count()).select_from(TaskLogModel).where(TaskLogModel.task_id == task_id)
+        )
+        return int(result.scalar_one())
 
     async def find_by_author(self, author_id: UUID) -> list[TaskLog]:
         result = await self._session.execute(
