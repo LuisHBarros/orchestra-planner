@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__acp__Edit",
+      "mcp__acp__Bash",
+      "mcp__acp__Write",
+      "Bash(source:*)",
+      "Bash(pytest:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(grep:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(pnpm install:*)",
+      "Bash(pnpm check:*)",
+      "Bash(pnpm build:*)"
+    ]
+  }
+}

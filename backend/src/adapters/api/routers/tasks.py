@@ -4,9 +4,7 @@ from datetime import datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
-
+from backend.src.adapters.api.routers.common import get_container, get_current_user_id
 from backend.src.application.use_cases.task_management import (
     AbandonTaskInput,
     AddDependencyInput,
@@ -20,8 +18,9 @@ from backend.src.application.use_cases.task_management import (
     SelectTaskInput,
 )
 from backend.src.domain.entities import Task, TaskLog
-from backend.src.adapters.api.routers.common import get_container, get_current_user_id
 from backend.src.infrastructure.di import Container
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/projects/{project_id}/tasks", tags=["tasks"])
 
@@ -142,10 +141,10 @@ class PaginatedTasksResponse(BaseModel):
 @router.get("", response_model=PaginatedTasksResponse)
 async def list_tasks(
     project_id: UUID,
-    limit: int = Query(20, ge=1, le=200),
-    offset: int = Query(0, ge=0),
     container: Annotated[Container, Depends(get_container)],
     user_id: Annotated[UUID, Depends(get_current_user_id)],
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
 ) -> PaginatedTasksResponse:
     async with container.uow:
         project = await container.uow.project_repository.find_by_id(project_id)
