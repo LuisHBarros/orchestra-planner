@@ -1,11 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 
-/**
- * useFetch Hook
- * 
- * Generic hook for fetching data from the API with loading and error states.
- */
-
 interface UseFetchState<T> {
   data: T | null;
   isLoading: boolean;
@@ -13,8 +7,8 @@ interface UseFetchState<T> {
 }
 
 export function useFetch<T>(
-  fetchFn: () => Promise<T>,
-  dependencies: unknown[] = []
+  fetchFn: (signal?: AbortSignal) => Promise<T>,
+  dependencies: unknown[] = [],
 ): UseFetchState<T> & { refetch: () => Promise<void> } {
   const [state, setState] = useState<UseFetchState<T>>({
     data: null,
@@ -23,11 +17,12 @@ export function useFetch<T>(
   });
 
   const refetch = useCallback(async () => {
-    setState({ data: null, isLoading: true, error: null });
+    setState((prev) => ({ ...prev, isLoading: true, error: null }));
     try {
       const result = await fetchFn();
       setState({ data: result, isLoading: false, error: null });
     } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
       setState({
         data: null,
         isLoading: false,
@@ -37,7 +32,25 @@ export function useFetch<T>(
   }, [fetchFn]);
 
   useEffect(() => {
-    refetch();
+    const controller = new AbortController();
+
+    setState((prev) => ({ ...prev, isLoading: true, error: null }));
+    fetchFn(controller.signal)
+      .then((result) => {
+        if (!controller.signal.aborted) {
+          setState({ data: result, isLoading: false, error: null });
+        }
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setState({
+          data: null,
+          isLoading: false,
+          error: error instanceof Error ? error : new Error(String(error)),
+        });
+      });
+
+    return () => controller.abort();
   }, dependencies);
 
   return { ...state, refetch };

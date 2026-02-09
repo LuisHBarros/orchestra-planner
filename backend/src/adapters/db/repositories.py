@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Iterable
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.src.domain.entities import Calendar, Task, TaskDependency, TaskLog
@@ -47,6 +47,40 @@ class PostgresProjectRepository:
             calendar = calendar_model.to_entity()
             project.calendar = WorkingCalendar.from_calendar(calendar)
         return project
+
+    async def list_by_user(
+        self, user_id: UUID, *, limit: int, offset: int
+    ) -> list[Project]:
+        member_exists = exists(
+            select(1).where(
+                ProjectMemberModel.project_id == ProjectModel.id,
+                ProjectMemberModel.user_id == user_id,
+            )
+        )
+        stmt = (
+            select(ProjectModel)
+            .where(or_(ProjectModel.manager_id == user_id, member_exists))
+            .order_by(ProjectModel.created_at.desc(), ProjectModel.id.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        result = await self._session.execute(stmt)
+        return [m.to_entity() for m in result.scalars().all()]
+
+    async def count_by_user(self, user_id: UUID) -> int:
+        member_exists = exists(
+            select(1).where(
+                ProjectMemberModel.project_id == ProjectModel.id,
+                ProjectMemberModel.user_id == user_id,
+            )
+        )
+        stmt = (
+            select(func.count(ProjectModel.id))
+            .select_from(ProjectModel)
+            .where(or_(ProjectModel.manager_id == user_id, member_exists))
+        )
+        result = await self._session.execute(stmt)
+        return int(result.scalar_one())
 
     async def save(self, project: Project) -> Project:
         model = ProjectModel.from_entity(project)

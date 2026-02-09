@@ -1,18 +1,8 @@
-import { ReactNode, useState } from "react";
-import { Menu, X, LogOut, Settings, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Link } from "wouter";
-
-/**
- * DashboardLayout Component
- * 
- * Provides persistent sidebar navigation for authenticated users.
- * Design: Minimalismo Funcional
- * - Sidebar esquerda com navegação fixa
- * - Ícones + labels para clareza
- * - Colapsável em mobile
- * - Branco com acentos em azul-índigo
- */
+import { ReactNode } from "react";
+import { Menu, X, LogOut, LayoutDashboard } from "lucide-react";
+import { Link, useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
+import { useState } from "react";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -20,13 +10,23 @@ interface DashboardLayoutProps {
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { logout, user } = useAuth();
+  const [location, navigate] = useLocation();
 
   const navItems = [
-    { label: "Dashboard", href: "/dashboard", icon: "📊" },
-    { label: "Projetos", href: "/projects", icon: "📁" },
-    { label: "Tarefas", href: "/tasks", icon: "✓" },
-    { label: "Equipe", href: "/team", icon: "👥" },
+    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   ];
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
+  };
+
+  const getPageTitle = () => {
+    if (location === "/dashboard") return "Dashboard";
+    if (location.startsWith("/projects/")) return "Projeto";
+    return "Orchestra Planner";
+  };
 
   return (
     <div className="flex h-screen bg-background">
@@ -57,38 +57,41 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
 
         {/* Navigation Items */}
         <nav className="flex-1 px-3 py-4 space-y-2">
-          {navItems.map((item) => (
-            <Link key={item.href} href={item.href}>
-              <a className="flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors group">
-                <span className="text-xl">{item.icon}</span>
-                {sidebarOpen && (
-                  <span className="text-sm font-medium group-hover:text-sidebar-primary">
-                    {item.label}
-                  </span>
-                )}
-              </a>
-            </Link>
-          ))}
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = location === item.href;
+            return (
+              <Link key={item.href} href={item.href}>
+                <a
+                  className={`flex items-center gap-3 px-3 py-2 rounded-md transition-colors group ${
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-primary"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent"
+                  }`}
+                >
+                  <Icon className="w-5 h-5" />
+                  {sidebarOpen && (
+                    <span className="text-sm font-medium">
+                      {item.label}
+                    </span>
+                  )}
+                </a>
+              </Link>
+            );
+          })}
         </nav>
-
-        {/* Action Button */}
-        <div className="p-3 border-t border-sidebar-border">
-          <Button
-            className="w-full flex items-center justify-center gap-2 bg-sidebar-primary text-sidebar-primary-foreground hover:bg-primary"
-            size="sm"
-          >
-            <Plus className="w-4 h-4" />
-            {sidebarOpen && <span>Novo Projeto</span>}
-          </Button>
-        </div>
 
         {/* User Menu */}
         <div className="p-3 border-t border-sidebar-border space-y-2">
-          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground hover:bg-sidebar-accent transition-colors">
-            <Settings className="w-5 h-5" />
-            {sidebarOpen && <span className="text-sm">Configurações</span>}
-          </button>
-          <button className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground hover:bg-destructive/10 transition-colors">
+          {sidebarOpen && user && (
+            <div className="px-3 py-2 text-xs text-sidebar-foreground/70 truncate">
+              {user.email}
+            </div>
+          )}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sidebar-foreground hover:bg-destructive/10 transition-colors"
+          >
             <LogOut className="w-5 h-5" />
             {sidebarOpen && <span className="text-sm">Sair</span>}
           </button>
@@ -100,7 +103,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Top Header */}
         <header className="h-16 bg-background border-b border-border flex items-center px-6 shadow-sm">
           <h2 className="text-xl font-semibold text-foreground">
-            Bem-vindo ao Orchestra Planner
+            {getPageTitle()}
           </h2>
         </header>
 

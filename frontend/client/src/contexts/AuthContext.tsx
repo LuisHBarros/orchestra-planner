@@ -1,11 +1,13 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  ReactNode,
+} from "react";
 import { apiClient, User } from "@/lib/api";
-
-/**
- * AuthContext
- * 
- * Manages user authentication state and provides methods for login/logout.
- */
 
 interface AuthContextType {
   user: User | null;
@@ -13,7 +15,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string) => Promise<void>;
   verifyToken: (token: string) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,53 +24,73 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Check for existing token on mount
   useEffect(() => {
-    const token = localStorage.getItem("auth_token");
-    if (token) {
-      // In a real app, you'd verify the token with the backend
-      // For now, we'll just assume it's valid
-      apiClient.setToken(token);
+    if (!apiClient.hasTokens()) {
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+
+    // Validate existing tokens with a lightweight call
+    apiClient
+      .getProjects(1, 0)
+      .then(() => {
+        // Tokens valid - restore user from session
+        const stored = sessionStorage.getItem("user");
+        if (stored) {
+          try {
+            setUser(JSON.parse(stored));
+          } catch {
+            apiClient.clearTokens();
+          }
+        }
+      })
+      .catch(() => {
+        apiClient.clearTokens();
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const login = async (email: string) => {
-    setIsLoading(true);
-    try {
-      await apiClient.requestMagicLink(email);
-      // Magic link sent, user will verify via email
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const login = useCallback(async (email: string) => {
+    await apiClient.requestMagicLink(email);
+  }, []);
 
-  const verifyToken = async (token: string) => {
+  const verifyToken = useCallback(async (token: string) => {
     setIsLoading(true);
     try {
-      const userData = await apiClient.verifyMagicLink(token);
+      const authResponse = await apiClient.verifyMagicLink(token);
+      const userData: User = {
+        user_id: authResponse.user_id,
+        email: authResponse.email,
+        name: authResponse.email.split("@")[0], // Fallback name from email
+      };
       setUser(userData);
+      sessionStorage.setItem("user", JSON.stringify(userData));
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const logout = () => {
+  const logout = useCallback(async () => {
+    await apiClient.revokeToken();
+    apiClient.clearTokens();
     setUser(null);
-    apiClient.clearToken();
-  };
+  }, []);
+
+  const isAuthenticated = !!user || apiClient.hasTokens();
+  const value = useMemo(
+    () => ({
+      user,
+      isLoading,
+      isAuthenticated,
+      login,
+      verifyToken,
+      logout,
+    }),
+    [user, isLoading, isAuthenticated, login, verifyToken, logout],
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        login,
-        verifyToken,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

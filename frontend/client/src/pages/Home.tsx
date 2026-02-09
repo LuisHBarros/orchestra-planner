@@ -101,11 +101,11 @@ export default function Home() {
 
           {/* Right: Hero Image */}
           <div className="relative">
-            <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl p-8 flex items-center justify-center min-h-96">
+            <div className="bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl p-6 min-h-96">
               <img
-                src="https://private-us-east-1.manuscdn.com/sessionFile/EIHCaOo7rsJvmtlIpDddhJ/sandbox/QIEk5fkzGNonNTZVOhHNW8-img-1_1770571390000_na1fn_b3JjaGVzdHJhLWhlcm8tZGFzaGJvYXJk.png?x-oss-process=image/resize,w_1920,h_1920/format,webp/quality,q_80&Expires=1798761600&Policy=eyJTdGF0ZW1lbnQiOlt7IlJlc291cmNlIjoiaHR0cHM6Ly9wcml2YXRlLXVzLWVhc3QtMS5tYW51c2Nkbi5jb20vc2Vzc2lvbkZpbGUvRUlIQ2FPbzdyc0p2bXRsSXBEZGRoSi9zYW5kYm94L1FJRWs1Zmt6R05vbk5UWlZPaEhOVzgtaW1nLTFfMTc3MDU3MTM5MDAwMF9uYTFmbl9iM0pqYUdWemRISmhMV2hsY204dFpHRnphR0p2WVhKay5wbmc~eC1vc3MtcHJvY2Vzcz1pbWFnZS9yZXNpemUsd18xOTIwLGhfMTkyMC9mb3JtYXQsd2VicC9xdWFsaXR5LHFfODAiLCJDb25kaXRpb24iOnsiRGF0ZUxlc3NUaGFuIjp7IkFXUzpFcG9jaFRpbWUiOjE3OTg3NjE2MDB9fX1dfQ__&Key-Pair-Id=K2HSFNDJXOU9YS&Signature=UijKqzD0tKQ2ANrukxbnyQEvXC86dx6HIXVAsryXsuAgvQNLN~1gJGyHf0b6xfUmijh6zxNhuVH7OSy4dGv14N83Gw3zjNA~zyscx6gt5foOhLASBIeBLQsStIw8JipdG0I3yQhGzZo7kxTa~yIIn5YWYYCs1YaFuLKkidV63ABr6mj2qBUhfrpPoHygAEaLfvNf9OnZO3wEdAAVTyYqmPwT0wrMWQUyROtbxQ90MYhFy-kv~vAGP96NTxBHxg1XPc7yQua3vzpd10eEsEslCa2Nfnus7n-ejBF8KUPHNJ4~N-DMyY2v2XXLRuT5xTU5GW4fvzXHbf1ZXPk9YyKB~w__"
-                alt="Orchestra Planner Dashboard"
-                className="w-full h-full object-cover rounded-lg"
+                src="/images/hero-dashboard.svg"
+                alt="Orchestra Planner dashboard"
+                className="w-full h-full object-cover rounded-xl shadow-lg"
               />
             </div>
           </div>

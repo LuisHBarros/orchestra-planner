@@ -3,6 +3,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { AuthProvider } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
@@ -10,37 +12,31 @@ import Dashboard from "./pages/Dashboard";
 import ProjectDetail from "./pages/ProjectDetail";
 import DashboardLayout from "./components/DashboardLayout";
 
-/**
- * Orchestra Planner Frontend
- * 
- * Design: Minimalismo Funcional com Acentos Modernos
- * - Sidebar persistente com navegação
- * - Cards elevados com sombras sutis
- * - Tipografia Geist Sans para clareza
- * - Cores: Branco, Cinza, Azul-índigo (#4F46E5)
- */
-
 function Router() {
   return (
     <Switch>
       {/* Public routes */}
       <Route path={"/"} component={Home} />
       <Route path={"/login"} component={Login} />
-      
+
       {/* Protected routes with dashboard layout */}
       <Route path={"/dashboard"}>
         {() => (
-          <DashboardLayout>
-            <Dashboard />
-          </DashboardLayout>
+          <ProtectedRoute>
+            <DashboardLayout>
+              <Dashboard />
+            </DashboardLayout>
+          </ProtectedRoute>
         )}
       </Route>
-      
+
       <Route path={"/projects/:projectId"}>
         {(params) => (
-          <DashboardLayout>
-            <ProjectDetail projectId={params.projectId} />
-          </DashboardLayout>
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ProjectDetail projectId={params.projectId} />
+            </DashboardLayout>
+          </ProtectedRoute>
         )}
       </Route>
 
@@ -55,10 +51,12 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider defaultTheme="light">
-        <TooltipProvider>
-          <Toaster />
-          <Router />
-        </TooltipProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Router />
+          </TooltipProvider>
+        </AuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

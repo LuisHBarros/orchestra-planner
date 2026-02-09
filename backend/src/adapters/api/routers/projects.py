@@ -4,7 +4,7 @@ from datetime import date, datetime
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from pydantic import BaseModel, Field
 
 from backend.src.adapters.api.routers.common import get_container, get_current_user_id
@@ -13,6 +13,7 @@ from backend.src.application.use_cases.project_management import (
     ConfigureProjectLLMInput,
     CreateProjectInput,
     GetProjectDetailsInput,
+    ListUserProjectsInput,
 )
 from backend.src.domain.entities import Project
 from backend.src.infrastructure.di import Container
@@ -58,6 +59,32 @@ class ConfigureProjectLLMRequest(BaseModel):
 class ConfigureCalendarRequest(BaseModel):
     timezone: str = Field(default="UTC", min_length=1, max_length=64)
     exclusion_dates: list[date] = Field(default_factory=list)
+
+
+class PaginatedProjectsResponse(BaseModel):
+    items: list[ProjectResponse]
+    total: int
+    limit: int
+    offset: int
+
+
+@router.get("", response_model=PaginatedProjectsResponse)
+async def list_projects(
+    container: Annotated[Container, Depends(get_container)],
+    user_id: Annotated[UUID, Depends(get_current_user_id)],
+    limit: int = Query(20, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> PaginatedProjectsResponse:
+    use_case = container.list_user_projects_use_case()
+    result = await use_case.execute(
+        ListUserProjectsInput(user_id=user_id, limit=limit, offset=offset)
+    )
+    return PaginatedProjectsResponse(
+        items=[ProjectResponse.from_entity(p) for p in result.items],
+        total=result.total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)

@@ -22,6 +22,8 @@ from backend.src.application.use_cases.project_management import (
     CreateRoleUseCase,
     FireEmployeeUseCase,
     GetProjectDetailsUseCase,
+    ListProjectMembersUseCase,
+    ListUserProjectsUseCase,
     RecalculateProjectScheduleUseCase,
     ResignFromProjectUseCase,
 )
@@ -154,6 +156,14 @@ class Container:
     def create_role_use_case(self) -> CreateRoleUseCase:
         """Create CreateRoleUseCase with dependencies."""
         return CreateRoleUseCase(uow=self.uow)
+
+    def list_user_projects_use_case(self) -> ListUserProjectsUseCase:
+        """Create ListUserProjectsUseCase with dependencies."""
+        return ListUserProjectsUseCase(uow=self.uow)
+
+    def list_project_members_use_case(self) -> ListProjectMembersUseCase:
+        """Create ListProjectMembersUseCase with dependencies."""
+        return ListProjectMembersUseCase(uow=self.uow)
 
     def get_project_details_use_case(self) -> GetProjectDetailsUseCase:
         """Create GetProjectDetailsUseCase with dependencies."""

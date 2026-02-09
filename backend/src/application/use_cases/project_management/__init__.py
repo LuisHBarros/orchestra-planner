@@ -26,6 +26,17 @@ from backend.src.application.use_cases.project_management.get_project_details im
     GetProjectDetailsOutput,
     GetProjectDetailsUseCase,
 )
+from backend.src.application.use_cases.project_management.list_project_members import (
+    EnrichedMember,
+    ListProjectMembersInput,
+    ListProjectMembersOutput,
+    ListProjectMembersUseCase,
+)
+from backend.src.application.use_cases.project_management.list_user_projects import (
+    ListUserProjectsInput,
+    ListUserProjectsOutput,
+    ListUserProjectsUseCase,
+)
 from backend.src.application.use_cases.project_management.recalculate_project_schedule import (
     RecalculateProjectScheduleInput,
     RecalculateProjectScheduleUseCase,
@@ -45,11 +56,18 @@ __all__ = [
     "CreateProjectUseCase",
     "CreateRoleInput",
     "CreateRoleUseCase",
+    "EnrichedMember",
     "FireEmployeeInput",
     "FireEmployeeUseCase",
     "GetProjectDetailsInput",
     "GetProjectDetailsOutput",
     "GetProjectDetailsUseCase",
+    "ListProjectMembersInput",
+    "ListProjectMembersOutput",
+    "ListProjectMembersUseCase",
+    "ListUserProjectsInput",
+    "ListUserProjectsOutput",
+    "ListUserProjectsUseCase",
     "ManagerCannotResignError",
     "MemberNotFoundError",
     "RecalculateProjectScheduleInput",
